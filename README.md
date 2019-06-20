@@ -1,2 +1,3 @@
 # wave_play
-Simple WAVE file player
+
+Simple WAVE file player using ALSA system
