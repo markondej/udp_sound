@@ -1,13 +1,19 @@
-FLAGS = -Wall -O2
+PRODUCT_NAME = UDP Sound Stream
+PRODUCT_VERSION = 0.9.0.0
+FLAGS = -Wall -O3 -std=c++11
 
-all: player.o wave_play.o
-	g++ -lasound -o wave_play wave_play.o player.o
+all: service.o client.o udp_stream.o
+	g++ -lpthread -o service service.o udp_stream.o
+	g++ -lpthread -o client client.o udp_stream.o
 
-player.o: player.cpp player.h
-	g++ $(FLAGS) -c player.cpp
+service.o: service.cpp
+	g++ $(FLAGS) -DPRODUCT_NAME="\"$(PRODUCT_NAME)\"" -DPRODUCT_VERSION="\"$(PRODUCT_VERSION)\"" -c service.cpp
+
+client.o: client.cpp
+	g++ $(FLAGS) -DPRODUCT_NAME="\"$(PRODUCT_NAME)\"" -DPRODUCT_VERSION="\"$(PRODUCT_VERSION)\"" -c client.cpp
 	
-wave_play.o: wave_play.cpp
-	g++ $(FLAGS) -c wave_play.cpp
-	
+udp_stream.o: udp_stream.cpp
+	g++ $(FLAGS) -c udp_stream.cpp
+
 clean:
 	rm *.o
