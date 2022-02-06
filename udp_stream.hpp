@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <vector>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -85,6 +86,25 @@ namespace udpstream {
         ) noexcept;
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
+        std::thread thread;
+        std::mutex access;
+    };
+
+    class OutputDevice : public Switchable {
+    public:
+        OutputDevice();
+        OutputDevice(const OutputDevice &) = delete;
+        OutputDevice(OutputDevice &&) = delete;
+        virtual ~OutputDevice();
+        OutputDevice &operator=(const OutputDevice &) = delete;
+        void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
+        void Disable() noexcept;
+        std::string GetError();
+        void SetData(const uint8_t *data, std::size_t size);
+    private:
+        static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
+        std::vector<uint8_t> data;
+        std::string errorDescription;
         std::thread thread;
         std::mutex access;
     };
