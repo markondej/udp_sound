@@ -5,8 +5,8 @@
 #include <atomic>
 #include <mutex>
 
-#define UDP_STREAM_DEFAULT_INPUT_DEVICE ""
-#define UDP_STREAM_DEFAULT_OUTPUT_DEVICE ""
+#define UDP_STREAM_DEFAULT_INPUT_DEVICE "default"
+#define UDP_STREAM_DEFAULT_OUTPUT_DEVICE "default"
 
 #define UDP_STREAM_DEFAULT_SAMPLE_RATE 44100
 #define UDP_STREAM_DEFAULT_CHANNELS 2
@@ -42,9 +42,9 @@ namespace udpstream {
             const std::string &address = UDP_STREAM_DEFAULT_ADDRESS,
             uint16_t port = UDP_STREAM_DEFAULT_PORT,
             const std::string &device = UDP_STREAM_DEFAULT_INPUT_DEVICE,
-            uint16_t sampleRate = UDP_STREAM_DEFAULT_SAMPLE_RATE,
+            uint32_t samplingRate = UDP_STREAM_DEFAULT_SAMPLE_RATE,
             uint8_t channels = UDP_STREAM_DEFAULT_CHANNELS,
-            uint8_t bits = UDP_STREAM_DEFAULT_BITS
+            uint8_t bitsPerChannel = UDP_STREAM_DEFAULT_BITS
         );
         void Disable() noexcept;
     private:
@@ -53,9 +53,9 @@ namespace udpstream {
             const std::string &address,
             uint16_t port,
             const std::string &device,
-            uint16_t sampleRate,
+            uint32_t samplingRate,
             uint8_t channels,
-            uint8_t bits
+            uint8_t bitsPerChannel
         ) noexcept;
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
@@ -65,7 +65,7 @@ namespace udpstream {
 
     class Client : public Switchable {
     public:
-        using DataHandler = std::function<void(uint16_t sampleRate, uint8_t channels, uint8_t bits, const uint8_t *data, std::size_t size) noexcept>;
+        using DataHandler = std::function<void(uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, const uint8_t *data, std::size_t size) noexcept>;
         Client(
             const DataHandler &dataHandler,
             const ExceptionHandler &exceptionHandler = nullptr

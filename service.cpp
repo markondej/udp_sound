@@ -2,7 +2,7 @@
 #include <iostream>
 #include <csignal>
 
-#define CONSOLE_NOP_DELAY 500000
+#define STREAM_SERVICE_NOP_DELAY 500000
 
 udpstream::Service *service = nullptr;
 
@@ -15,15 +15,16 @@ void signalHandler(int sigNum)
 int main(int argc, char** argv)
 {
     std::string address = UDP_STREAM_DEFAULT_ADDRESS, device = UDP_STREAM_DEFAULT_INPUT_DEVICE;
-    uint16_t port = UDP_STREAM_DEFAULT_PORT, sampleRate = UDP_STREAM_DEFAULT_SAMPLE_RATE;
-    uint8_t channels = UDP_STREAM_DEFAULT_CHANNELS, bits = UDP_STREAM_DEFAULT_BITS;
+    uint32_t samplingRate = UDP_STREAM_DEFAULT_SAMPLE_RATE;
+    uint16_t port = UDP_STREAM_DEFAULT_PORT;
+    uint8_t channels = UDP_STREAM_DEFAULT_CHANNELS, bitsPerChannel = UDP_STREAM_DEFAULT_BITS;
 
     if (argc > 1) { address = argv[1]; }
     if (argc > 2) { port = std::stoi(argv[2]); }
     if (argc > 3) { device = argv[3]; }
-    if (argc > 4) { sampleRate = std::stoi(argv[4]); }
+    if (argc > 4) { samplingRate = std::stoi(argv[4]); }
     if (argc > 5) { channels = std::stoi(argv[5]); }
-    if (argc > 6) { bits = std::stoi(argv[6]); }
+    if (argc > 6) { bitsPerChannel = std::stoi(argv[6]); }
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTSTP, signalHandler);
@@ -41,12 +42,12 @@ int main(int argc, char** argv)
             address,
             port,
             device,
-            sampleRate,
+            samplingRate,
             channels,
-            bits
+            bitsPerChannel
         );
         while (service->IsEnabled()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(CONSOLE_NOP_DELAY));
+            std::this_thread::sleep_for(std::chrono::microseconds(STREAM_SERVICE_NOP_DELAY));
         }
     } catch (...) {
         result = EXIT_FAILURE;

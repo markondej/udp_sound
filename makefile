@@ -3,8 +3,8 @@ PRODUCT_VERSION = 0.9.0.0
 FLAGS = -Wall -O3 -std=c++11
 
 all: service.o client.o udp_stream.o
-	g++ -lpthread -o service service.o udp_stream.o
-	g++ -lpthread -o client client.o udp_stream.o
+	g++ -lpthread -lasound -o service service.o udp_stream.o
+	g++ -lpthread -lasound -o client client.o udp_stream.o
 
 service.o: service.cpp
 	g++ $(FLAGS) -DPRODUCT_NAME="\"$(PRODUCT_NAME)\"" -DPRODUCT_VERSION="\"$(PRODUCT_VERSION)\"" -c service.cpp
