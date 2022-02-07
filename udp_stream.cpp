@@ -18,9 +18,9 @@
 #define UDP_SERVER_SOCKET_ERROR -1
 #define UDP_SERVER_CLOSESOCKET close
 
-#define UDP_STREAM_REGISTER_TIMEOUT 10
+#define UDP_STREAM_REGISTER_TIMEOUT 5
 #define UDP_STREAM_NOP_DELAY 1000
-#define UDP_STREAM_PERIOD_SIZE 8000
+#define UDP_STREAM_PERIOD_SIZE 4000
 #define UDP_STREAM_BUFFER_TIME 500000
 
 #define UDP_STREAM_CLIENT_REQUEST_REGISTER 0x01
@@ -773,9 +773,9 @@ namespace udpstream {
                     {
                         std::lock_guard<std::mutex> lock(access);
                         if ((registered != nullptr) && registered->address == address) {
+                            printText("Client " + static_cast<std::string>(address) + ":" + std::to_string(address.GetPort()) + " unregistered");
                             delete registered;
                             registered = nullptr;
-                            printText("Client " + static_cast<std::string>(address) + ":" + std::to_string(address.GetPort()) + " unregistered");
                         }
                     }
                     break;
@@ -800,10 +800,10 @@ namespace udpstream {
 
         auto handleTimeout = [&]() {
             std::lock_guard<std::mutex> lock(access);
-            if (registered && (registered->timeout < std::time(nullptr))) {
+            if ((registered != nullptr) && (registered->timeout < std::time(nullptr))) {
+                printText("Client " + static_cast<std::string>(registered->address) + ":" + std::to_string(registered->address.GetPort()) + " unregistered");
                 delete registered;
                 registered = nullptr;
-                printText("Client " + static_cast<std::string>(registered->address) + ":" + std::to_string(registered->address.GetPort()) + " unregistered");
             }
         };
 
