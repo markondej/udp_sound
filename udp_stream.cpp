@@ -35,7 +35,7 @@ namespace udpstream {
             std::memset(address, 0, sizeof(sockaddr_in));
             (reinterpret_cast<sockaddr_in *>(address))->sin_family = AF_INET;
         }
-        IPAddress(const std::string &address, Type type = Type::Unknown) : IPAddress() {
+        IPAddress(const std::string &address, Type type = Type::Unknown) {
             auto init = [&](Type type) {
                 switch (type) {
                 case Type::IPv6:
