@@ -14,10 +14,6 @@
 
 #define UDP_SERVER_NOP_DELAY 1000
 
-#define UDP_SERVER_SOCKET int
-#define UDP_SERVER_SOCKET_ERROR -1
-#define UDP_SERVER_CLOSESOCKET close
-
 #define UDP_STREAM_REGISTER_TIMEOUT 5
 #define UDP_STREAM_NOP_DELAY 1000
 #define UDP_STREAM_PERIOD_SIZE 4000
@@ -561,12 +557,12 @@ namespace udpstream {
             }
 
             int enable = 1;
-            if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char *>(&enable), sizeof(enable)) == UDP_SERVER_SOCKET_ERROR) {
+            if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char *>(&enable), sizeof(enable)) == -1) {
                 close(sock);
                 throw std::runtime_error("Cannot enable service (setsockopt error)");
             }
 
-            if (bind(sock, addr.GetSockAddr(), addr.GetSockAddrLength()) == UDP_SERVER_SOCKET_ERROR) {
+            if (bind(sock, addr.GetSockAddr(), addr.GetSockAddrLength()) == -1) {
                 close(sock);
                 throw std::runtime_error("Cannot enable service (bind error)");
             }
@@ -592,7 +588,7 @@ namespace udpstream {
                 }
                 length = addr.GetSockAddrLength();
                 int bytes = recvfrom(sock, reinterpret_cast<char *>(input.data()), static_cast<int>(input.size()), 0, addr.GetSockAddr(), &length);
-                if (bytes == UDP_SERVER_SOCKET_ERROR) {
+                if (bytes == -1) {
                     std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
                     continue;
                 }
