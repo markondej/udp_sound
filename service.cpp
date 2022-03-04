@@ -12,6 +12,7 @@ void signalHandler(int sigNum)
         service->Disable();
     }
 }
+
 int main(int argc, char** argv)
 {
     std::string address = UDP_STREAM_DEFAULT_ADDRESS, device = UDP_STREAM_DEFAULT_INPUT_DEVICE;
