@@ -1,8 +1,8 @@
 FLAGS = -Wall -O3 -std=c++11
 
 all: service.o client.o udp_stream.o
-	g++ -lpthread -lasound -o service service.o udp_stream.o
-	g++ -lpthread -lasound -o client client.o udp_stream.o
+	g++ -o service service.o udp_stream.o -lpthread -lasound 
+	g++ -o client client.o udp_stream.o -lpthread -lasound 
 
 service.o: service.cpp
 	g++ $(FLAGS) -c service.cpp
