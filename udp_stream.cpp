@@ -712,6 +712,7 @@ namespace udpstream {
         uint8_t channels,
         uint8_t bitsPerChannel
     ) noexcept {
+        DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
         UDPServer server;
@@ -719,9 +720,16 @@ namespace udpstream {
 
         {
             std::lock_guard<std::mutex> lock(instance->access);
+            dataHandler = instance->dataHandler;
             exceptionHandler = instance->exceptionHandler;
             logHandler = instance->logHandler;
         }
+
+        auto handleData = [&](uint8_t *data, std::size_t size) {
+            if (dataHandler != nullptr) {
+                dataHandler(samplingRate, channels, bitsPerChannel, data, size);
+            }
+        };
 
         auto handleException = [&](const std::exception &exception) {
             if (exceptionHandler != nullptr) {
@@ -815,6 +823,7 @@ namespace udpstream {
                         }
                         client = *registered;
                     }
+                    handleData(stream.data(), stream.size());
                     while (!stream.empty()) {
                         PacketHeader header = {
                             identifier,
