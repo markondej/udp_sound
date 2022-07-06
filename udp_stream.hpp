@@ -28,10 +28,12 @@ namespace udpstream {
 
     using ExceptionHandler = std::function<void(const std::exception &exception) noexcept>;
     using LogHandler = std::function<void(const std::string &text) noexcept>;
+    using DataHandler = std::function<void(uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) noexcept>;
 
     class Service : public Switchable {
     public:
         Service(
+            const DataHandler &dataHandler = nullptr,
             const ExceptionHandler &exceptionHandler = nullptr,
             const LogHandler &logHandler = nullptr
         );
@@ -58,6 +60,7 @@ namespace udpstream {
             uint8_t channels,
             uint8_t bitsPerChannel
         ) noexcept;
+        DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
         std::thread thread;
@@ -66,7 +69,6 @@ namespace udpstream {
 
     class Client : public Switchable {
     public:
-        using DataHandler = std::function<void(uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, const uint8_t *data, std::size_t size) noexcept>;
         Client(
             const DataHandler &dataHandler,
             const ExceptionHandler &exceptionHandler = nullptr

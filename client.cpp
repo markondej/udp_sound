@@ -38,7 +38,7 @@ int main(int argc, char** argv)
 
     try {
         client = new udpstream::Client(
-            [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, const uint8_t *data, std::size_t size) {
+            [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) {
                 std::lock_guard<std::mutex> lock(access);
                 if (selected == nullptr) {
                     selected = new SelectedParams({ samplingRate, channels, bitsPerChannel });
