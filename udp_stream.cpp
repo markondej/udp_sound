@@ -672,8 +672,8 @@ namespace udpstream {
         bool connected;
     };
 
-    Service::Service(const ExceptionHandler &exceptionHandler, const LogHandler &logHandler)
-        : Switchable(), exceptionHandler(exceptionHandler), logHandler(logHandler)
+    Service::Service(const DataHandler &dataHandler, const ExceptionHandler &exceptionHandler, const LogHandler &logHandler)
+        : Switchable(), dataHandler(dataHandler), exceptionHandler(exceptionHandler), logHandler(logHandler)
     {
     }
 
