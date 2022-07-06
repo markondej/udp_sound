@@ -361,7 +361,7 @@ namespace udpstream {
                     std::lock_guard<std::mutex> lock(instance->access);
                     std::size_t offset = instance->data.size(), bytes = error * (bitsPerChannel >> 3) * channels;
                     instance->data.resize(offset + bytes);
-                    std::memcpy(&instance->data.data()[offset], buffer, bytes);
+                    std::memcpy(&instance->data[offset], buffer, bytes);
                 }
             } catch (std::exception &catched) {
                 std::lock_guard<std::mutex> lock(instance->access);
@@ -411,7 +411,7 @@ namespace udpstream {
         std::lock_guard<std::mutex> lock(access);
         std::size_t offset = this->data.size();
         this->data.resize(offset + size);
-        std::memcpy(&this->data.data()[offset], data, size);
+        std::memcpy(&this->data[offset], data, size);
     }
 
     void OutputDevice::DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
@@ -746,7 +746,7 @@ namespace udpstream {
             server.SetHandler([&](const IPAddress &address, const std::vector<uint8_t> &input) {
                 for (std::size_t i = 0; i < input.size(); i++) {
                     std::vector<uint8_t> status;
-                    switch (input.data()[0]) {
+                    switch (input[0]) {
                     case UDP_STREAM_CLIENT_REQUEST_REGISTER:
                     {
                         std::lock_guard<std::mutex> lock(access);
@@ -826,7 +826,7 @@ namespace udpstream {
                         std::size_t size = std::min(stream.size(), UDP_SERVER_PACKET_LENGTH - sizeof(PacketHeader));
                         packet.resize(sizeof(PacketHeader) + size);
                         std::memcpy(packet.data(), &header, sizeof(PacketHeader));
-                        std::memcpy(&packet.data()[sizeof(PacketHeader)], stream.data(), size);
+                        std::memcpy(&packet[sizeof(PacketHeader)], stream.data(), size);
                         server.Send(client.address, packet);
                         stream.erase(stream.begin(), stream.begin() + size);
                         std::this_thread::sleep_for(std::chrono::microseconds(size * 250000 / (samplingRate * channels * (bitsPerChannel >> 3))));
@@ -906,7 +906,7 @@ namespace udpstream {
                 }
                 if (!handlerStream.empty()) {
                     PacketHeader header = *reinterpret_cast<PacketHeader *>(handlerStream.data());
-                    dataHandler(header.samplingRate, header.channels, header.bitsPerChannel, &handlerStream.data()[sizeof(PacketHeader)], handlerStream.size() - sizeof(PacketHeader));
+                    dataHandler(header.samplingRate, header.channels, header.bitsPerChannel, &handlerStream[sizeof(PacketHeader)], handlerStream.size() - sizeof(PacketHeader));
                 } else {
                     std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
                 }

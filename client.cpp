@@ -47,7 +47,7 @@ int main(int argc, char** argv)
                 if ((selected->samplingRate == samplingRate) && (selected->channels == channels) && (selected->bitsPerChannel == bitsPerChannel)) {
                     std::size_t offset = outputData.size();
                     outputData.resize(offset + size);
-                    std::memcpy(&outputData.data()[offset], data, size);
+                    std::memcpy(&outputData[offset], data, size);
                 }
             }, [&](const std::exception &exception) {
                 std::cout << exception.what() << std::endl;
