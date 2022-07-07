@@ -105,6 +105,7 @@ namespace udpstream {
         void SetData(const uint8_t *data, std::size_t size);
     private:
         static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
+        std::size_t maxDataSize;
         std::vector<uint8_t> data;
         std::string errorDescription;
         std::thread thread;

@@ -83,7 +83,7 @@ int main(int argc, char** argv)
                         std::size_t offset = size - bytesPerChannel;
                         for (std::size_t i = inputs - 1; i >= filterSize - 1; i--) {
                             float output = 0.0f;
-                            for (std::size_t j = 0; j < 1; j++) {
+                            for (std::size_t j = 0; j < filterSize; j++) {
                                 output += ((bytesPerChannel > 1) ? static_cast<float>((reinterpret_cast<int16_t *>(input->data()))[i - j]) : static_cast<float>((*input)[i - j]) - 0x7f)  * firFilter[j];
                             }
                             if (bytesPerChannel > 1) {

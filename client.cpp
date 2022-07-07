@@ -58,13 +58,17 @@ int main(int argc, char** argv)
             if (!error.empty()) {
                 throw std::runtime_error(error.c_str());
             } else {
-                std::lock_guard<std::mutex> lock(access);
-                if (!outputData.empty()) {
-                    outputDevice.SetData(outputData.data(), outputData.size());
-                    outputData.clear();
-                    if (!outputDevice.IsEnabled() && selected != nullptr) {
-                        outputDevice.Enable(device, selected->samplingRate, selected->channels, selected->bitsPerChannel);
+                bool enable = false;
+                {
+                    std::lock_guard<std::mutex> lock(access);
+                    if (!outputData.empty()) {
+                        outputDevice.SetData(outputData.data(), outputData.size());
+                        outputData.clear();
+                        enable = true;
                     }
+                }
+                if (enable && !outputDevice.IsEnabled() && selected != nullptr) {
+                    outputDevice.Enable(device, selected->samplingRate, selected->channels, selected->bitsPerChannel);
                 }
             }
             std::this_thread::sleep_for(std::chrono::microseconds(STREAM_CLIENT_NOP_DELAY));
