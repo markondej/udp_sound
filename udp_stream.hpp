@@ -20,10 +20,11 @@ namespace udpstream {
     class Switchable {
     public:
         Switchable();
-        bool IsEnabled() const;
+        bool IsEnabled() const noexcept;
         void Disable() noexcept;
     protected:
-        std::atomic_bool enabled;
+        bool Enable() noexcept;
+        std::atomic_bool enabled, disable;
     };
 
     using ExceptionHandler = std::function<void(const std::exception &exception) noexcept>;
@@ -58,13 +59,15 @@ namespace udpstream {
             const std::string &device,
             uint32_t samplingRate,
             uint8_t channels,
-            uint8_t bitsPerChannel
+            uint8_t bitsPerChannel,
+            const DataHandler &dataHandler = nullptr,
+            const ExceptionHandler &exceptionHandler = nullptr,
+            const LogHandler &logHandler = nullptr
         ) noexcept;
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
         std::thread thread;
-        std::mutex access;
     };
 
     class Client : public Switchable {
@@ -84,12 +87,13 @@ namespace udpstream {
             Client *instance,
             const std::string &address,
             uint16_t port,
-            const std::string &device
+            const std::string &device,
+            const DataHandler &dataHandler = nullptr,
+            const ExceptionHandler &exceptionHandler = nullptr
         ) noexcept;
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         std::thread thread;
-        std::mutex access;
     };
 
     class OutputDevice : public Switchable {
@@ -101,14 +105,14 @@ namespace udpstream {
         OutputDevice &operator=(const OutputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
         void Disable() noexcept;
-        std::string GetError();
+        std::string GetError() const;
         void SetData(const uint8_t *data, std::size_t size);
     private:
         static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
         std::size_t maxDataSize;
         std::vector<uint8_t> data;
-        std::string errorDescription;
+        std::string error;
         std::thread thread;
-        std::mutex access;
+        mutable std::mutex access;
     };
 }

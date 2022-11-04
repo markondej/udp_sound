@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cstring>
 
-#define STREAM_CLIENT_NOP_DELAY 10000
+#define STREAM_CLIENT_NOP_DELAY 1000
 
 udpstream::Client *client = nullptr;
 
@@ -29,25 +29,32 @@ int main(int argc, char** argv)
     int result = EXIT_SUCCESS;
 
     udpstream::OutputDevice outputDevice;
-    std::vector<uint8_t> outputData;
+    std::atomic<std::vector<uint8_t> *> outputStream;
     struct SelectedParams {
         uint32_t samplingRate;
         uint8_t channels, bitsPerChannel;
-    } *selected = nullptr;
-    std::mutex access;
+    };
+    std::atomic<SelectedParams *> selected;
 
     try {
         client = new udpstream::Client(
             [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) {
-                std::lock_guard<std::mutex> lock(access);
-                if (selected == nullptr) {
-                    selected = new SelectedParams({ samplingRate, channels, bitsPerChannel });
+                SelectedParams *params = new SelectedParams({ samplingRate, channels, bitsPerChannel }), *required = nullptr;
+                if (!selected.compare_exchange_strong(required, params)) {
+                    delete params;
+                } else {
                     std::cout << "Stream params: " << samplingRate << " Hz, " << static_cast<uint32_t>(channels) << " channel(s), " << static_cast<uint32_t>(bitsPerChannel) << " bits" << std::endl;
                 }
-                if ((selected->samplingRate == samplingRate) && (selected->channels == channels) && (selected->bitsPerChannel == bitsPerChannel)) {
-                    std::size_t offset = outputData.size();
-                    outputData.resize(offset + size);
-                    std::memcpy(&outputData[offset], data, size);
+                params = selected.load();
+                if ((params->samplingRate == samplingRate) && (params->channels == channels) && (params->bitsPerChannel == bitsPerChannel)) {
+                    std::vector<uint8_t> *previous, *stream = new std::vector<uint8_t>();
+                    stream->resize(size);
+                    std::memcpy(stream->data(), data, size);
+                    previous = outputStream.exchange(stream);
+                    if (previous != nullptr) {
+                        delete previous;
+                        std::cout << "Warning: overrun detected" << std::endl;
+                    }
                 }
             }, [&](const std::exception &exception) {
                 std::cout << exception.what() << std::endl;
@@ -58,20 +65,20 @@ int main(int argc, char** argv)
             if (!error.empty()) {
                 throw std::runtime_error(error.c_str());
             } else {
-                bool enable = false;
-                {
-                    std::lock_guard<std::mutex> lock(access);
-                    if (!outputData.empty()) {
-                        outputDevice.SetData(outputData.data(), outputData.size());
-                        outputData.clear();
-                        enable = true;
+                std::vector<uint8_t> *stream = outputStream.exchange(nullptr);
+                if (stream != nullptr) {
+                    try {
+                        outputDevice.SetData(stream->data(), stream->size());
+                    } catch (...) { } 
+                    delete stream;
+                    if (!outputDevice.IsEnabled()) {
+                        SelectedParams *params = selected.load(std::memory_order_consume);
+                        outputDevice.Enable(device, params->samplingRate, params->channels, params->bitsPerChannel);
                     }
-                }
-                if (enable && !outputDevice.IsEnabled() && selected != nullptr) {
-                    outputDevice.Enable(device, selected->samplingRate, selected->channels, selected->bitsPerChannel);
+                } else {
+                    std::this_thread::sleep_for(std::chrono::microseconds(STREAM_CLIENT_NOP_DELAY));
                 }
             }
-            std::this_thread::sleep_for(std::chrono::microseconds(STREAM_CLIENT_NOP_DELAY));
         }
     } catch (...) {
         result = EXIT_FAILURE;
@@ -82,8 +89,16 @@ int main(int argc, char** argv)
         client = nullptr;
         delete temp;
     }
-    if (selected != nullptr) {
-        delete selected;
+
+    SelectedParams *params = selected.load(std::memory_order_consume);
+    if (params != nullptr) {
+        delete params;
     }
+
+    std::vector<uint8_t> *stream = outputStream.exchange(nullptr);
+    if (stream != nullptr) {
+        delete stream;
+    }
+
     return result;
 }

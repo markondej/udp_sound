@@ -226,7 +226,7 @@ namespace udpstream {
                 return sizeof(sockaddr_in);
             }
         }
-        static inline bool IsCorrect(const std::string &address, Type type = Type::IPv4) {
+        static bool IsCorrect(const std::string &address, Type type = Type::IPv4) {
             switch (type) {
             case Type::IPv4:
                 return std::regex_match(address, std::regex("^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"));
@@ -236,7 +236,7 @@ namespace udpstream {
                 return IsCorrect(address, Type::IPv4) || IsCorrect(address, Type::IPv6);
             }
         }
-        static inline int GetFamily(Type type) {
+        static int GetFamily(Type type) {
             switch (type) {
             case Type::IPv6:
                 return AF_INET6;
@@ -250,23 +250,29 @@ namespace udpstream {
     };
 
     Switchable::Switchable()
-        : enabled(false)
+        : enabled(false), disable(false)
     {
     }
 
-    bool Switchable::IsEnabled() const
+    bool Switchable::IsEnabled() const noexcept
     {
-        return enabled;
+        return enabled.load();
     }
 
     void Switchable::Disable() noexcept
     {
-        enabled = false;
+        disable.store(true);
+    }
+
+    bool Switchable::Enable() noexcept
+    {
+        bool required = false;
+        return enabled.compare_exchange_strong(required, true);
     }
 
     class InputDevice : public Switchable {
     public:
-        InputDevice() { }
+        InputDevice() : Switchable() { }
         InputDevice(const InputDevice &) = delete;
         InputDevice(InputDevice &&) = delete;
         virtual ~InputDevice() {
@@ -274,10 +280,9 @@ namespace udpstream {
         }
         InputDevice &operator=(const InputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
-            if (IsEnabled()) {
+            if (!Switchable::Enable()) {
                 return;
             }
-            enabled = true;
             thread = std::thread(DeviceThread, this, device, samplingRate, channels, bitsPerChannel);
         }
         void Disable() noexcept {
@@ -286,9 +291,9 @@ namespace udpstream {
                 thread.join();
             }
         }
-        std::string GetError() {
+        std::string GetError() const {
             std::lock_guard<std::mutex> lock(access);
-            return errorDescription;
+            return error;
         }
         std::vector<uint8_t> GetData() {
             std::vector<uint8_t> data;
@@ -307,6 +312,8 @@ namespace udpstream {
                 if ((bitsPerChannel != 8) && (bitsPerChannel != 16)) {
                     throw std::runtime_error("Unsupported channel bits value");
                 }
+
+                instance->disable.store(false);
 
                 int error = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_CAPTURE, 0);
                 if (error < 0) {
@@ -358,7 +365,7 @@ namespace udpstream {
                 std::size_t size = frames * (bitsPerChannel >> 3) * channels;
                 buffer = new uint8_t[size];
 
-                while (instance->enabled) {
+                while (!instance->disable.load()) {
                     error = snd_pcm_readi(handle, buffer, frames);
                     if (error == -EPIPE) {
                         /* EPIPE: Overrun */
@@ -377,8 +384,7 @@ namespace udpstream {
                 }
             } catch (std::exception &catched) {
                 std::lock_guard<std::mutex> lock(instance->access);
-                instance->errorDescription = catched.what();
-                instance->enabled = false;
+                instance->error = catched.what();
             }
 
             if (handle != nullptr) {
@@ -388,14 +394,16 @@ namespace udpstream {
             if (buffer != nullptr) {
                 delete[] buffer;
             }
+
+            instance->enabled.store(false);
         }
         std::vector<uint8_t> data;
-        std::string errorDescription;
+        std::string error;
         std::thread thread;
-        std::mutex access;
+        mutable std::mutex access;
     };
 
-    OutputDevice::OutputDevice() : maxDataSize(0) {
+    OutputDevice::OutputDevice() : Switchable(), maxDataSize(0) {
     }
 
     OutputDevice::~OutputDevice() {
@@ -403,7 +411,7 @@ namespace udpstream {
     }
 
     void OutputDevice::Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
-        if (IsEnabled()) {
+        if (!Switchable::Enable()) {
             return;
         }
         {
@@ -411,7 +419,6 @@ namespace udpstream {
             maxDataSize = samplingRate * (bitsPerChannel >> 3) * channels;
             data.clear();
         }
-        enabled = true;
         thread = std::thread(DeviceThread, this, device, samplingRate, channels, bitsPerChannel);
     }
 
@@ -422,9 +429,9 @@ namespace udpstream {
         }
     }
 
-    std::string OutputDevice::GetError() {
+    std::string OutputDevice::GetError() const {
         std::lock_guard<std::mutex> lock(access);
-        return errorDescription;
+        return error;
     }
 
     void OutputDevice::SetData(const uint8_t *data, std::size_t size) {
@@ -445,6 +452,8 @@ namespace udpstream {
             if ((bitsPerChannel != 8) && (bitsPerChannel != 16)) {
                 throw std::runtime_error("Unsupported channel bits value");
             }
+
+            instance->disable.store(false);
 
             int error = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_PLAYBACK, 0);
             if (error < 0) {
@@ -499,7 +508,7 @@ namespace udpstream {
             bool first = true;
             std::size_t bytes = 0;
             std::memset(buffer, 0x00, size);
-            while (instance->enabled) {
+            while (!instance->disable.load()) {
                 bool wait = false;
                 error = snd_pcm_avail_update(handle);
                 if (error == -EPIPE) {
@@ -546,8 +555,7 @@ namespace udpstream {
             }
         } catch (std::exception &catched) {
             std::lock_guard<std::mutex> lock(instance->access);
-            instance->errorDescription = catched.what();
-            instance->enabled = false;
+            instance->error = catched.what();
         }
 
         if (handle != nullptr) {
@@ -557,6 +565,8 @@ namespace udpstream {
         if (buffer != nullptr) {
             delete[] buffer;
         }
+
+        instance->enabled.store(false);
     }
 
     struct PacketHeader {
@@ -573,73 +583,104 @@ namespace udpstream {
             IPAddress address;
         };
         using DataHandler = std::function<void(const IPAddress &address, const std::vector<uint8_t> &input)>;
-        UDPServer() : Switchable() { }
+        UDPServer() : Switchable(), handler(nullptr) { }
         UDPServer(const UDPServer &) = delete;
         UDPServer(UDPServer &&) = delete;
         UDPServer &operator=(const UDPServer &) = delete;
-        void SetHandler(DataHandler handler) {
-            this->handler = handler;
+        virtual ~UDPServer() {
+            Disable();
+            while (enabled.load()) {
+                std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+            }
+            DataHandler *handler = this->handler.exchange(nullptr);
+            if (handler != nullptr) {
+                delete handler;
+            }
+        }
+        void SetHandler(const DataHandler &handler) {
+            if (handler == nullptr) {
+                return;
+            }
+            DataHandler *required = nullptr, *desired = new DataHandler(handler);
+            if (!this->handler.compare_exchange_strong(required, desired)) {
+                delete desired;
+            }
         }
         void Send(const IPAddress &address, const std::vector<uint8_t> &stream) {
             std::lock_guard<std::mutex> lock(access);
             outbound.push_back({ stream, address });
         }
         void Enable(const std::string &address, uint16_t port) {
-            IPAddress addr(address, port);
-
-            int sock;
-            if ((sock = socket(IPAddress::GetFamily(addr.GetType()), SOCK_DGRAM, IPPROTO_UDP)) == -1) {
-                throw std::runtime_error("Cannot enable service (socket error)");
+            if (!Switchable::Enable()) {
+                throw std::runtime_error("Cannot enable service (already enabled)");
             }
 
-            int flags = fcntl(sock, F_GETFL, 0);
-            if ((flags == -1) || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
-                close(sock);
-                throw std::runtime_error("Cannot enable service (fcntl error)");
-            }
+            int sock = -1;
 
-            int enable = 1;
-            if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char *>(&enable), sizeof(enable)) == -1) {
-                close(sock);
-                throw std::runtime_error("Cannot enable service (setsockopt error)");
-            }
+            try {
+                IPAddress addr(address, port);
 
-            if (bind(sock, addr.GetSockAddr(), addr.GetSockAddrLength()) == -1) {
-                close(sock);
-                throw std::runtime_error("Cannot enable service (bind error)");
-            }
+                if ((sock = socket(IPAddress::GetFamily(addr.GetType()), SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+                    throw std::runtime_error("Cannot enable service (socket error)");
+                }
 
-            enabled = true;
-            std::vector<uint8_t> input;
-            input.resize(UDP_SERVER_PACKET_LENGTH);
-            outbound.clear();
-            OutboundData *data;
-            socklen_t length;
+                int flags = fcntl(sock, F_GETFL, 0);
+                if ((flags == -1) || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+                    throw std::runtime_error("Cannot enable service (fcntl error)");
+                }
 
-            while (enabled) {
-                while ((data = GetOutbound()) != nullptr) {
-                    length = data->address.GetSockAddrLength();
-                    while (true) {
-                        int bytes = sendto(sock, reinterpret_cast<char *>(data->stream.data()), static_cast<int>(data->stream.size()), 0, data->address.GetSockAddr(), length);
-                        if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
-                            break;
+                int enable = 1;
+                if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char *>(&enable), sizeof(enable)) == -1) {
+                    throw std::runtime_error("Cannot enable service (setsockopt error)");
+                }
+
+                if (bind(sock, addr.GetSockAddr(), addr.GetSockAddrLength()) == -1) {
+                    throw std::runtime_error("Cannot enable service (bind error)");
+                }
+
+                disable.store(false);
+                Switchable::Enable();
+                std::vector<uint8_t> input;
+                input.resize(UDP_SERVER_PACKET_LENGTH);
+                outbound.clear();
+                OutboundData *data;
+                socklen_t length;
+
+                while (!disable.load()) {
+                    while ((data = GetOutbound()) != nullptr) {
+                        length = data->address.GetSockAddrLength();
+                        while (true) {
+                            int bytes = sendto(sock, reinterpret_cast<char *>(data->stream.data()), static_cast<int>(data->stream.size()), 0, data->address.GetSockAddr(), length);
+                            if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
+                                break;
+                            }
+                            std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
                         }
-                        std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                        delete data;
                     }
-                    delete data;
+                    length = addr.GetSockAddrLength();
+                    int bytes = recvfrom(sock, reinterpret_cast<char *>(input.data()), static_cast<int>(input.size()), 0, addr.GetSockAddr(), &length);
+                    if (bytes == -1) {
+                        std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                        continue;
+                    }
+                    if (bytes) {
+                        DataHandler *handler = this->handler.load(std::memory_order_consume);
+                        if (handler != nullptr) {
+                            (*handler)(addr, std::vector<uint8_t>(input.begin(), input.begin() + bytes));
+                        }
+                    }
                 }
-                length = addr.GetSockAddrLength();
-                int bytes = recvfrom(sock, reinterpret_cast<char *>(input.data()), static_cast<int>(input.size()), 0, addr.GetSockAddr(), &length);
-                if (bytes == -1) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
-                    continue;
-                }
-                if ((handler != nullptr) && bytes) {
-                    handler(addr, std::vector<uint8_t>(input.begin(), input.begin() + bytes));
-                }
-            }
 
-            close(sock);
+                close(sock);
+            } catch (...) {
+                if (sock == -1) {
+                    close(sock);
+                }
+                enabled.store(false);
+                throw;
+            }
+            enabled.store(false);
         }
     private:
         OutboundData *GetOutbound() {
@@ -654,13 +695,13 @@ namespace udpstream {
             return outbound;
         }
         std::vector<OutboundData> outbound;
-        DataHandler handler;
+        std::atomic<DataHandler *> handler;
         std::mutex access;
     };
 
-    class UDPClient : Switchable {
+    class UDPClient {
     public:
-        UDPClient() : connected(false) { };
+        UDPClient() { sock = -1; };
         UDPClient(const UDPClient &) = delete;
         UDPClient(UDPClient &&) = delete;
         virtual ~UDPClient() {
@@ -679,16 +720,21 @@ namespace udpstream {
                 close(sock);
                 throw std::runtime_error("Cannot initialize connection (fcntl error)");
             }
-
-            enabled = true;
+        }
+        bool IsEnabled() const noexcept {
+            return (sock != -1);
         }
         void Disable() noexcept {
-            if (enabled) {
-                close(sock);
+            if (!IsEnabled()) {
+                return;
             }
-            Switchable::Disable();
+            close(sock);
+            sock = -1;
         }
         std::vector<uint8_t> Receive() const {
+            if (!IsEnabled()) {
+                throw std::runtime_error("Cannot receive data (client disabled)");
+            }
             std::vector<uint8_t> stream;
             stream.resize(UDP_SERVER_PACKET_LENGTH);
             socklen_t length = addr.GetSockAddrLength();
@@ -699,6 +745,9 @@ namespace udpstream {
             return std::vector<uint8_t>(stream.begin(), stream.begin() + bytes);
         }
         void Send(const std::vector<uint8_t> &stream) const {
+            if (!IsEnabled()) {
+                throw std::runtime_error("Cannot send data (client disabled)");
+            }
 #ifdef _WIN32
             int length = addr.GetSockAddrLength();
 #else
@@ -711,13 +760,10 @@ namespace udpstream {
                 }
                 std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
             }
-
-            sendto(sock, reinterpret_cast<const char *>(stream.data()), static_cast<int>(stream.size()), 0, addr.GetSockAddr(), length);
         }
     private:
         int sock;
         IPAddress addr;
-        bool connected;
     };
 
     Service::Service(const DataHandler &dataHandler, const ExceptionHandler &exceptionHandler, const LogHandler &logHandler)
@@ -739,8 +785,11 @@ namespace udpstream {
         uint8_t bitsPerChannel
     )
     {
-        enabled = true;
-        thread = std::thread(ServiceThread, this, address, port, device, samplingRate, channels, bitsPerChannel);
+        if (!Switchable::Enable()) {
+            throw std::runtime_error("Cannot enable service (already enabled)");
+        }
+
+        thread = std::thread(ServiceThread, this, address, port, device, samplingRate, channels, bitsPerChannel, dataHandler, exceptionHandler, logHandler);
     }
 
     void Service::Disable() noexcept
@@ -758,20 +807,13 @@ namespace udpstream {
         const std::string &device,
         uint32_t samplingRate,
         uint8_t channels,
-        uint8_t bitsPerChannel
+        uint8_t bitsPerChannel,
+        const DataHandler &dataHandler,
+        const ExceptionHandler &exceptionHandler,
+        const LogHandler &logHandler
     ) noexcept {
-        DataHandler dataHandler;
-        ExceptionHandler exceptionHandler;
-        LogHandler logHandler;
         UDPServer server;
         InputDevice inputDevice;
-
-        {
-            std::lock_guard<std::mutex> lock(instance->access);
-            dataHandler = instance->dataHandler;
-            exceptionHandler = instance->exceptionHandler;
-            logHandler = instance->logHandler;
-        }
 
         auto handleData = [&](uint8_t *data, std::size_t size) {
             if (dataHandler != nullptr) {
@@ -795,7 +837,9 @@ namespace udpstream {
         struct Registered {
             IPAddress address;
             std::time_t timeout;
-        } *registered;
+        } *registered = nullptr;
+
+        instance->disable.store(false);
 
         std::thread serverThread([&]() {
             printText("Starting service on: " + address + ":" + std::to_string(port));
@@ -806,7 +850,7 @@ namespace udpstream {
                     case UDP_STREAM_CLIENT_REQUEST_REGISTER:
                     {
                         std::lock_guard<std::mutex> lock(access);
-                        if ((registered != nullptr) && registered->address == address) {
+                        if ((registered != nullptr) && (registered->address == address)) {
                             registered->timeout = std::time(nullptr) + UDP_STREAM_REGISTER_TIMEOUT;
                         } else if (registered == nullptr) {
                             registered = new Registered({ address, std::time(nullptr) + UDP_STREAM_REGISTER_TIMEOUT });
@@ -834,11 +878,11 @@ namespace udpstream {
                 server.Enable(address, port);
             } catch (std::exception &exception) {
                 handleException(exception);
-                instance->enabled = false;
+                instance->disable.store(true);
             }
         });
 
-        while (instance->enabled && !server.IsEnabled()) {
+        while (!instance->disable.load() && !server.IsEnabled()) {
             std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
         }
 
@@ -854,7 +898,7 @@ namespace udpstream {
         uint32_t identifier = 0;
         try {
             inputDevice.Enable(device, samplingRate, channels, bitsPerChannel);
-            while (instance->enabled) {
+            while (!instance->disable.load()) {
                 std::string error = inputDevice.GetError();
                 if (!error.empty()) {
                     throw std::runtime_error(error.c_str());
@@ -895,7 +939,6 @@ namespace udpstream {
             }
         } catch (std::exception &exception) {
             handleException(exception);
-            instance->enabled = false;
         }
         server.Disable();
         if (serverThread.joinable()) {
@@ -904,6 +947,8 @@ namespace udpstream {
         if (registered != nullptr) {
             delete registered;
         }
+
+        instance->enabled.store(false);
     }
 
     Client::Client(const DataHandler &dataHandler, const ExceptionHandler &exceptionHandler)
@@ -918,8 +963,11 @@ namespace udpstream {
 
     void Client::Enable(const std::string &address, uint16_t port, const std::string &device)
     {
-        enabled = true;
-        thread = std::thread(ClientThread, this, address, port, device);
+        if (!Switchable::Enable()) {
+            throw std::runtime_error("Cannot enable client (already enabled)");
+        }
+
+        thread = std::thread(ClientThread, this, address, port, device, dataHandler, exceptionHandler);
     }
 
     void Client::Disable() noexcept
@@ -934,47 +982,32 @@ namespace udpstream {
         Client *instance,
         const std::string &address,
         uint16_t port,
-        const std::string &device
+        const std::string &device,
+        const DataHandler &dataHandler,
+        const ExceptionHandler &exceptionHandler
     ) noexcept
     {
-        ExceptionHandler exceptionHandler;
         UDPClient client;
 
-        {
-            std::lock_guard<std::mutex> lock(instance->access);
-            exceptionHandler = instance->exceptionHandler;
-        }
+        instance->disable.store(false);
 
-        std::mutex streamAccess;
-        std::vector<uint8_t> stream;
-        std::atomic_bool handle(true);
-        std::thread handlerThread([&]() {
-            DataHandler dataHandler;
-            {
-                std::lock_guard<std::mutex> lock(instance->access);
-                dataHandler = instance->dataHandler;
-            }
-
-            std::vector<uint8_t> handlerStream;
-            while (handle) {
-                {
-                    std::lock_guard<std::mutex> lock(streamAccess);
-                    handlerStream = std::move(stream);
-                }
-                if (!handlerStream.empty()) {
-                    PacketHeader header = *reinterpret_cast<PacketHeader *>(handlerStream.data());
-                    dataHandler(header.samplingRate, header.channels, header.bitsPerChannel, &handlerStream[sizeof(PacketHeader)], handlerStream.size() - sizeof(PacketHeader));
+        std::atomic<std::vector<uint8_t> *> stream;
+        std::thread consumer([&]() {
+            while (!instance->disable.load()) {
+                auto consumed = stream.exchange(nullptr);
+                if (consumed != nullptr) {
+                    try {
+                        PacketHeader header = *reinterpret_cast<PacketHeader *>(consumed->data());
+                        if (dataHandler != nullptr) {
+                            dataHandler(header.samplingRate, header.channels, header.bitsPerChannel, &(*consumed)[sizeof(PacketHeader)], consumed->size() - sizeof(PacketHeader));
+                        }
+                    } catch (...) { }
+                    delete consumed;
                 } else {
                     std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
                 }
             }
         });
-
-        auto handleException = [&](const std::exception &exception) {
-            if (exceptionHandler != nullptr) {
-                exceptionHandler(exception);
-            }
-        };
 
         auto createRequest = [&](uint8_t type) -> std::vector<uint8_t> {
             std::vector<uint8_t> request;
@@ -991,7 +1024,7 @@ namespace udpstream {
             registered = true;
 
             uint32_t last = 0;
-            while (instance->enabled) {
+            while (!instance->disable.load()) {
                 if (timeout < std::time(nullptr)) {
                     client.Send(createRequest(UDP_STREAM_CLIENT_REQUEST_REGISTER));
                     timeout = std::time(nullptr) + (UDP_STREAM_REGISTER_TIMEOUT >> 1);
@@ -1000,8 +1033,10 @@ namespace udpstream {
                 if (received.size() > sizeof(PacketHeader)) {
                     uint32_t identifier = reinterpret_cast<PacketHeader *>(received.data())->identifier;
                     if (!last || (last < identifier)) {
-                        std::lock_guard<std::mutex> lock(streamAccess);
-                        stream = std::move(received);
+                        auto previous = stream.exchange(new std::vector<uint8_t>(std::move(received)));
+                        if (previous != nullptr) {
+                            delete previous;
+                        }
                     }
                     last = identifier;
                 } else {
@@ -1009,16 +1044,22 @@ namespace udpstream {
                 }
             }
         } catch (std::exception &exception) {
-            handleException(exception);
-            instance->enabled = false;
+            if (exceptionHandler != nullptr) {
+                exceptionHandler(exception);
+            }
         }
         if (registered) {
             client.Send(createRequest(UDP_STREAM_CLIENT_REQUEST_UNREGISTER));
         }
         client.Disable();
-        handle = false;
-        if (handlerThread.joinable()) {
-            handlerThread.join();
+        if (consumer.joinable()) {
+            consumer.join();
         }
+        auto previous = stream.exchange(nullptr);
+        if (previous != nullptr) {
+            delete previous;
+        }
+
+        instance->enabled.store(false);
     }
 }
