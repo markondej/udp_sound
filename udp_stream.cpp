@@ -259,9 +259,9 @@ namespace udpstream {
         return enabled.load();
     }
 
-    void Switchable::Disable() noexcept
+    bool Switchable::Disable() noexcept
     {
-        disable.store(true);
+        return !disable.exchange(true);
     }
 
     bool Switchable::Enable() noexcept
@@ -283,13 +283,15 @@ namespace udpstream {
             if (!Switchable::Enable()) {
                 return;
             }
+            disable.store(false);
             thread = std::thread(DeviceThread, this, device, samplingRate, channels, bitsPerChannel);
         }
-        void Disable() noexcept {
-            Switchable::Disable();
-            if (thread.joinable()) {
+        bool Disable() {
+            if (Switchable::Disable() && thread.joinable()) {
                 thread.join();
+                return true;
             }
+            return false;
         }
         std::string GetError() const {
             std::lock_guard<std::mutex> lock(access);
@@ -312,8 +314,6 @@ namespace udpstream {
                 if ((bitsPerChannel != 8) && (bitsPerChannel != 16)) {
                     throw std::runtime_error("Unsupported channel bits value");
                 }
-
-                instance->disable.store(false);
 
                 int error = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_CAPTURE, 0);
                 if (error < 0) {
@@ -419,14 +419,16 @@ namespace udpstream {
             maxDataSize = samplingRate * (bitsPerChannel >> 3) * channels;
             data.clear();
         }
+        disable.store(false);
         thread = std::thread(DeviceThread, this, device, samplingRate, channels, bitsPerChannel);
     }
 
-    void OutputDevice::Disable() noexcept {
-        Switchable::Disable();
-        if (thread.joinable()) {
+    bool OutputDevice::Disable() {
+        if (Switchable::Disable() && thread.joinable()) {
             thread.join();
+            return true;
         }
+        return false;
     }
 
     std::string OutputDevice::GetError() const {
@@ -452,8 +454,6 @@ namespace udpstream {
             if ((bitsPerChannel != 8) && (bitsPerChannel != 16)) {
                 throw std::runtime_error("Unsupported channel bits value");
             }
-
-            instance->disable.store(false);
 
             int error = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_PLAYBACK, 0);
             if (error < 0) {
@@ -639,7 +639,6 @@ namespace udpstream {
                 }
 
                 disable.store(false);
-                Switchable::Enable();
                 std::vector<uint8_t> input;
                 input.resize(UDP_SERVER_PACKET_LENGTH);
                 outbound.clear();
@@ -681,6 +680,9 @@ namespace udpstream {
                 throw;
             }
             enabled.store(false);
+        }
+        void Disable() noexcept {
+            disable.store(true);
         }
     private:
         OutboundData *GetOutbound() {
@@ -788,16 +790,17 @@ namespace udpstream {
         if (!Switchable::Enable()) {
             throw std::runtime_error("Cannot enable service (already enabled)");
         }
-
+        disable.store(false);
         thread = std::thread(ServiceThread, this, address, port, device, samplingRate, channels, bitsPerChannel, dataHandler, exceptionHandler, logHandler);
     }
 
-    void Service::Disable() noexcept
+    bool Service::Disable()
     {
-        Switchable::Disable();
-        if (thread.joinable()) {
+        if (Switchable::Disable() && thread.joinable()) {
             thread.join();
+            return true;
         }
+        return false;
     }
 
     void Service::ServiceThread(
@@ -839,8 +842,7 @@ namespace udpstream {
             std::time_t timeout;
         } *registered = nullptr;
 
-        instance->disable.store(false);
-
+        std::atomic_bool error(false);
         std::thread serverThread([&]() {
             printText("Starting service on: " + address + ":" + std::to_string(port));
             server.SetHandler([&](const IPAddress &address, const std::vector<uint8_t> &input) {
@@ -878,7 +880,7 @@ namespace udpstream {
                 server.Enable(address, port);
             } catch (std::exception &exception) {
                 handleException(exception);
-                instance->disable.store(true);
+                error.store(true);
             }
         });
 
@@ -898,7 +900,7 @@ namespace udpstream {
         uint32_t identifier = 0;
         try {
             inputDevice.Enable(device, samplingRate, channels, bitsPerChannel);
-            while (!instance->disable.load()) {
+            while (!instance->disable.load() && !error) {
                 std::string error = inputDevice.GetError();
                 if (!error.empty()) {
                     throw std::runtime_error(error.c_str());
@@ -966,16 +968,17 @@ namespace udpstream {
         if (!Switchable::Enable()) {
             throw std::runtime_error("Cannot enable client (already enabled)");
         }
-
+        disable.store(false);
         thread = std::thread(ClientThread, this, address, port, device, dataHandler, exceptionHandler);
     }
 
-    void Client::Disable() noexcept
+    bool Client::Disable()
     {
-        Switchable::Disable();
-        if (thread.joinable()) {
+        if (Switchable::Disable() && thread.joinable()) {
             thread.join();
+            return true;
         }
+        return false;
     }
 
     void Client::ClientThread(
@@ -988,8 +991,6 @@ namespace udpstream {
     ) noexcept
     {
         UDPClient client;
-
-        instance->disable.store(false);
 
         std::atomic<std::vector<uint8_t> *> stream;
         std::thread consumer([&]() {

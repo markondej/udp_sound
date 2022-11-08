@@ -21,7 +21,7 @@ namespace udpstream {
     public:
         Switchable();
         bool IsEnabled() const noexcept;
-        void Disable() noexcept;
+        bool Disable() noexcept;
     protected:
         bool Enable() noexcept;
         std::atomic_bool enabled, disable;
@@ -50,7 +50,7 @@ namespace udpstream {
             uint8_t channels = UDP_STREAM_DEFAULT_CHANNELS,
             uint8_t bitsPerChannel = UDP_STREAM_DEFAULT_BITS
         );
-        void Disable() noexcept;
+        bool Disable();
     private:
         static void ServiceThread(
             Service *instance,
@@ -81,7 +81,7 @@ namespace udpstream {
         Client &operator=(const Client &) = delete;
         virtual ~Client();
         void Enable(const std::string &address, uint16_t port, const std::string &device = UDP_STREAM_DEFAULT_OUTPUT_DEVICE);
-        void Disable() noexcept;
+        bool Disable();
     private:
         static void ClientThread(
             Client *instance,
@@ -104,7 +104,7 @@ namespace udpstream {
         virtual ~OutputDevice();
         OutputDevice &operator=(const OutputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
-        void Disable() noexcept;
+        bool Disable();
         std::string GetError() const;
         void SetData(const uint8_t *data, std::size_t size);
     private:
