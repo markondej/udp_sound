@@ -750,11 +750,7 @@ namespace udpstream {
             if (!IsEnabled()) {
                 throw std::runtime_error("Cannot send data (client disabled)");
             }
-#ifdef _WIN32
-            int length = addr.GetSockAddrLength();
-#else
             socklen_t length = addr.GetSockAddrLength();
-#endif
             while (true) {
                 int bytes = sendto(sock, reinterpret_cast<const char *>(stream.data()), static_cast<int>(stream.size()), 0, addr.GetSockAddr(), length);
                 if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
