@@ -703,7 +703,7 @@ namespace udpstream {
 
     class UDPClient {
     public:
-        UDPClient() { sock = -1; };
+        UDPClient() : sock(-1) { };
         UDPClient(const UDPClient &) = delete;
         UDPClient(UDPClient &&) = delete;
         virtual ~UDPClient() {
