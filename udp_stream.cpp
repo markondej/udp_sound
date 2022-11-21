@@ -681,9 +681,6 @@ namespace udpstream {
             }
             enabled.store(false);
         }
-        void Disable() noexcept {
-            disable.store(true);
-        }
     private:
         OutboundData *GetOutbound() {
             std::lock_guard<std::mutex> lock(access);
