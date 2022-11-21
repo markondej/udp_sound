@@ -673,7 +673,7 @@ namespace udpstream {
 
                 close(sock);
             } catch (...) {
-                if (sock == -1) {
+                if (sock != -1) {
                     close(sock);
                 }
                 enabled.store(false);
