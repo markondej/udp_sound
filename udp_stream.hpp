@@ -105,14 +105,14 @@ namespace udpstream {
         OutputDevice &operator=(const OutputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
         bool Disable();
-        std::string GetError() const;
+        std::string GetError();
         void SetData(const uint8_t *data, std::size_t size);
+        std::size_t GetBufferedSamples() const;
     private:
         static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
-        std::size_t maxDataSize;
-        std::vector<uint8_t> data;
-        std::string error;
+        std::atomic<std::vector<uint8_t> *> data;
+        std::atomic<std::string *> error;
+        std::atomic_size_t buffered;
         std::thread thread;
-        mutable std::mutex access;
     };
 }
