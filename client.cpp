@@ -3,7 +3,8 @@
 #include <iostream>
 #include <cstring>
 
-#define STREAM_CLIENT_NOP_DELAY 10000
+#define STREAM_CLIENT_NOP_DELAY 1000
+#define BUFFERED_PLAYBACK_PRINT_INTERVAL 1000
 
 udpstream::Client *client = nullptr;
 
@@ -28,51 +29,39 @@ int main(int argc, char** argv)
 
     int result = EXIT_SUCCESS;
 
-    udpstream::OutputDevice outputDevice;
-    std::vector<uint8_t> outputData;
-    struct SelectedParams {
-        uint32_t samplingRate;
-        uint8_t channels, bitsPerChannel;
-    } *selected = nullptr;
-    std::mutex access;
+    udpstream::OutputDevice output;
+    std::atomic<uint32_t> rate(0);
 
     try {
         client = new udpstream::Client(
             [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) {
-                std::lock_guard<std::mutex> lock(access);
-                if (selected == nullptr) {
-                    selected = new SelectedParams({ samplingRate, channels, bitsPerChannel });
+                if (!output.IsEnabled()) {
                     std::cout << "Stream params: " << samplingRate << " Hz, " << static_cast<uint32_t>(channels) << " channel(s), " << static_cast<uint32_t>(bitsPerChannel) << " bits" << std::endl;
+                    output.Enable(device, samplingRate, channels, bitsPerChannel);
+                    rate = samplingRate;
                 }
-                if ((selected->samplingRate == samplingRate) && (selected->channels == channels) && (selected->bitsPerChannel == bitsPerChannel)) {
-                    std::size_t offset = outputData.size();
-                    outputData.resize(offset + size);
-                    std::memcpy(&outputData[offset], data, size);
-                }
-            }, [&](const std::exception &exception) {
+                output.SetData(data, size);
+
+        }, [&](const std::exception &exception) {
                 std::cout << exception.what() << std::endl;
             });
         client->Enable(address, port);
+        auto last = std::chrono::system_clock::now();
         while (client->IsEnabled()) {
-            std::string error = outputDevice.GetError();
+            std::string error = output.GetError();
             if (!error.empty()) {
                 throw std::runtime_error(error.c_str());
             } else {
-                bool enable = false;
-                {
-                    std::lock_guard<std::mutex> lock(access);
-                    if (!outputData.empty()) {
-                        outputDevice.SetData(outputData.data(), outputData.size());
-                        outputData.clear();
-                        enable = true;
-                    }
+                auto now = std::chrono::system_clock::now();
+                auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
+                if ((diff > BUFFERED_PLAYBACK_PRINT_INTERVAL) && output.IsEnabled()) {
+                    last = now;
+                    std::cout << "\rBuffered playback: " << (output.GetBufferedSamples() * 1000 / rate.load()) << " ms" << std::flush;
                 }
-                if (enable && !outputDevice.IsEnabled() && selected != nullptr) {
-                    outputDevice.Enable(device, selected->samplingRate, selected->channels, selected->bitsPerChannel);
-                }
+                std::this_thread::sleep_for(std::chrono::microseconds(STREAM_CLIENT_NOP_DELAY));
             }
-            std::this_thread::sleep_for(std::chrono::microseconds(STREAM_CLIENT_NOP_DELAY));
         }
+        std::cout << std::endl;
     } catch (...) {
         result = EXIT_FAILURE;
     }
@@ -82,8 +71,6 @@ int main(int argc, char** argv)
         client = nullptr;
         delete temp;
     }
-    if (selected != nullptr) {
-        delete selected;
-    }
+
     return result;
 }

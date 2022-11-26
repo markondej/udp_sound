@@ -20,10 +20,11 @@ namespace udpstream {
     class Switchable {
     public:
         Switchable();
-        bool IsEnabled() const;
-        void Disable() noexcept;
+        bool IsEnabled() const noexcept;
+        bool Disable() noexcept;
     protected:
-        std::atomic_bool enabled;
+        bool Enable() noexcept;
+        std::atomic_bool enabled, disable;
     };
 
     using ExceptionHandler = std::function<void(const std::exception &exception) noexcept>;
@@ -49,7 +50,7 @@ namespace udpstream {
             uint8_t channels = UDP_STREAM_DEFAULT_CHANNELS,
             uint8_t bitsPerChannel = UDP_STREAM_DEFAULT_BITS
         );
-        void Disable() noexcept;
+        bool Disable();
     private:
         static void ServiceThread(
             Service *instance,
@@ -58,13 +59,15 @@ namespace udpstream {
             const std::string &device,
             uint32_t samplingRate,
             uint8_t channels,
-            uint8_t bitsPerChannel
+            uint8_t bitsPerChannel,
+            const DataHandler &dataHandler = nullptr,
+            const ExceptionHandler &exceptionHandler = nullptr,
+            const LogHandler &logHandler = nullptr
         ) noexcept;
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
         std::thread thread;
-        std::mutex access;
     };
 
     class Client : public Switchable {
@@ -78,18 +81,19 @@ namespace udpstream {
         Client &operator=(const Client &) = delete;
         virtual ~Client();
         void Enable(const std::string &address, uint16_t port, const std::string &device = UDP_STREAM_DEFAULT_OUTPUT_DEVICE);
-        void Disable() noexcept;
+        bool Disable();
     private:
         static void ClientThread(
             Client *instance,
             const std::string &address,
             uint16_t port,
-            const std::string &device
+            const std::string &device,
+            const DataHandler &dataHandler = nullptr,
+            const ExceptionHandler &exceptionHandler = nullptr
         ) noexcept;
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         std::thread thread;
-        std::mutex access;
     };
 
     class OutputDevice : public Switchable {
@@ -100,15 +104,15 @@ namespace udpstream {
         virtual ~OutputDevice();
         OutputDevice &operator=(const OutputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
-        void Disable() noexcept;
+        bool Disable();
         std::string GetError();
         void SetData(const uint8_t *data, std::size_t size);
+        std::size_t GetBufferedSamples() const;
     private:
         static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
-        std::size_t maxDataSize;
-        std::vector<uint8_t> data;
-        std::string errorDescription;
+        std::atomic<std::vector<uint8_t> *> data;
+        std::atomic<std::string *> error;
+        std::atomic_size_t buffered;
         std::thread thread;
-        std::mutex access;
     };
 }
