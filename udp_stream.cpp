@@ -9,7 +9,7 @@
 #include <alsa/asoundlib.h>
 
 #ifndef UDP_SERVER_PACKET_LENGTH
-#define UDP_SERVER_PACKET_LENGTH 32 * 1024
+#define UDP_SERVER_PACKET_LENGTH 65507
 #endif
 
 #define UDP_SERVER_NOP_DELAY 1000
