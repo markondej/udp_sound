@@ -262,7 +262,7 @@ namespace udpstream {
         return enabled.load();
     }
 
-    bool Switchable::Disable() noexcept
+    bool Switchable::Disable()
     {
         return !disable.exchange(true);
     }
@@ -913,7 +913,6 @@ namespace udpstream {
             printText("Starting service on: " + address + ":" + std::to_string(port));
             server.SetHandler([&](const IPAddress &address, const std::vector<uint8_t> &input) {
                 if (input.size() == 1) {
-                    std::vector<uint8_t> status;
                     switch (input[0]) {
                     case UDP_STREAM_CLIENT_REQUEST_REGISTER:
                     {
