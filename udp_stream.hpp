@@ -21,7 +21,7 @@ namespace udpstream {
     public:
         Switchable();
         bool IsEnabled() const noexcept;
-        bool Disable() noexcept;
+        virtual bool Disable();
     protected:
         bool Enable() noexcept;
         std::atomic_bool enabled, disable;
