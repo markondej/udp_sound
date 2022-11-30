@@ -12,10 +12,10 @@
 #define UDP_SERVER_PACKET_LENGTH 65507
 #endif
 
-#define UDP_SERVER_NOP_DELAY 1000
+#define UDP_SERVER_NOP_DELAY 1
 
-#define UDP_STREAM_REGISTER_TIMEOUT 5
-#define UDP_STREAM_NOP_DELAY 1000
+#define UDP_STREAM_REGISTER_TIMEOUT 5000
+#define UDP_STREAM_NOP_DELAY 1
 #define UDP_STREAM_PERIOD_DURATION 25
 #define UDP_STREAM_BUFFERED_PERIODS 4
 
@@ -394,7 +394,7 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Cannot verify available frames (" + std::string(snd_strerror(error)) + ")");
                     } else if (static_cast<unsigned long>(error) < frames) {
-                        std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
                         continue;
                     }
                     error = snd_pcm_readi(handle, buffer, frames);
@@ -415,7 +415,7 @@ namespace udpstream {
                     if (stored != nullptr) {
                         delete stored;
                     }
-                    std::this_thread::sleep_for(std::chrono::microseconds(std::max(error * 500000 / samplingRate, static_cast<uint32_t>(UDP_STREAM_NOP_DELAY))));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(std::max(error * 500 / samplingRate, static_cast<uint32_t>(UDP_STREAM_NOP_DELAY))));
                 }
             } catch (std::exception &catched) {
                 std::string *error = new std::string(catched.what());
@@ -605,7 +605,7 @@ namespace udpstream {
                     }
                 }
                 if (nop) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
                     continue;
                 }
                 error = snd_pcm_writei(handle, buffer, frames);
@@ -663,7 +663,7 @@ namespace udpstream {
         virtual ~UDPServer() {
             Disable();
             while (enabled.load()) {
-                std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
             }
             DataHandler *handler = this->handler.exchange(nullptr);
             if (handler != nullptr) {
@@ -726,14 +726,14 @@ namespace udpstream {
                             if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
                                 break;
                             }
-                            std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                            std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
                         }
                         delete data;
                     }
                     length = addr.GetSockAddrLength();
                     int bytes = recvfrom(sock, reinterpret_cast<char *>(input.data()), static_cast<int>(input.size()), 0, addr.GetSockAddr(), &length);
                     if (bytes == -1) {
-                        std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
                         continue;
                     }
                     if (bytes) {
@@ -826,7 +826,7 @@ namespace udpstream {
                 if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
                     break;
                 }
-                std::this_thread::sleep_for(std::chrono::microseconds(UDP_SERVER_NOP_DELAY));
+                std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
             }
         }
     private:
@@ -905,7 +905,7 @@ namespace udpstream {
         std::mutex access;
         struct Registered {
             IPAddress address;
-            std::time_t timeout;
+            std::chrono::time_point<std::chrono::system_clock> timestamp;
         } *registered = nullptr;
 
         std::atomic_bool error(false);
@@ -916,11 +916,12 @@ namespace udpstream {
                     switch (input[0]) {
                     case UDP_STREAM_CLIENT_REQUEST_REGISTER:
                     {
+                        std::chrono::time_point<std::chrono::system_clock> current = std::chrono::system_clock::now();
                         std::lock_guard<std::mutex> lock(access);
                         if ((registered != nullptr) && (registered->address == address)) {
-                            registered->timeout = std::time(nullptr) + UDP_STREAM_REGISTER_TIMEOUT;
+                            registered->timestamp = current;
                         } else if (registered == nullptr) {
-                            registered = new Registered({ address, std::time(nullptr) + UDP_STREAM_REGISTER_TIMEOUT });
+                            registered = new Registered({ address, current });
                             printText("Client " + static_cast<std::string>(address) + ":" + std::to_string(address.GetPort()) + " registered");
                         }
                     }
@@ -950,12 +951,12 @@ namespace udpstream {
         });
 
         while (!instance->disable.load() && !server.IsEnabled()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
+            std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
         }
 
         auto handleTimeout = [&]() {
             std::lock_guard<std::mutex> lock(access);
-            if ((registered != nullptr) && (registered->timeout < std::time(nullptr))) {
+            if ((registered != nullptr) && (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - registered->timestamp).count() > UDP_STREAM_REGISTER_TIMEOUT)) {
                 printText("Client " + static_cast<std::string>(registered->address) + ":" + std::to_string(registered->address.GetPort()) + " unregistered");
                 delete registered;
                 registered = nullptr;
@@ -977,7 +978,7 @@ namespace udpstream {
                     {
                         std::lock_guard<std::mutex> lock(access);
                         if (registered == nullptr) {
-                            std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
+                            std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
                             continue;
                         }
                         client = *registered;
@@ -997,12 +998,12 @@ namespace udpstream {
                         std::memcpy(&packet[sizeof(PacketHeader)], stream->data(), size);
                         server.Send(client.address, packet);
                         stream->erase(stream->begin(), stream->begin() + size);
-                        std::this_thread::sleep_for(std::chrono::microseconds(std::max(size * 500000 / (samplingRate * (bitsPerChannel >> 3) * channels), static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(size * 500 / (samplingRate * (bitsPerChannel >> 3) * channels), static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
                         identifier++;
                     }
                     delete stream;
                 } else {
-                    std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
                 }
             }
         } catch (std::exception &exception) {
@@ -1069,14 +1070,15 @@ namespace udpstream {
             client.Enable(address, port);
 
             client.Send(createRequest(UDP_STREAM_CLIENT_REQUEST_REGISTER));
-            std::time_t timeout = std::time(nullptr) + (UDP_STREAM_REGISTER_TIMEOUT >> 1);
+            std::chrono::time_point<std::chrono::system_clock> timestamp = std::chrono::system_clock::now();
             registered = true;
 
             uint32_t last = 0;
             while (!instance->disable.load()) {
-                if (timeout < std::time(nullptr)) {
+                std::chrono::time_point<std::chrono::system_clock> current = std::chrono::system_clock::now();
+                if (std::chrono::duration_cast<std::chrono::milliseconds>(current - timestamp).count() > (UDP_STREAM_REGISTER_TIMEOUT >> 1)) {
                     client.Send(createRequest(UDP_STREAM_CLIENT_REQUEST_REGISTER));
-                    timeout = std::time(nullptr) + (UDP_STREAM_REGISTER_TIMEOUT >> 1);
+                    timestamp = current;
                 }
                 std::vector<uint8_t> received = client.Receive();
                 if (received.size() > sizeof(PacketHeader)) {
@@ -1086,7 +1088,7 @@ namespace udpstream {
                     }
                     last = header->identifier;
                 } else {
-                    std::this_thread::sleep_for(std::chrono::microseconds(UDP_STREAM_NOP_DELAY));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
                 }
             }
         } catch (std::exception &exception) {

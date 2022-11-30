@@ -3,7 +3,7 @@
 #include <csignal>
 #include <cstring>
 
-#define STREAM_SERVICE_NOP_DELAY 500000
+#define STREAM_SERVICE_NOP_DELAY 500
 
 udpstream::Service *service = nullptr;
 
@@ -53,7 +53,7 @@ int main(int argc, char** argv)
             bitsPerChannel
         );
         while (service->IsEnabled()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(STREAM_SERVICE_NOP_DELAY));
+            std::this_thread::sleep_for(std::chrono::milliseconds(STREAM_SERVICE_NOP_DELAY));
         }
     } catch (...) {
         result = EXIT_FAILURE;

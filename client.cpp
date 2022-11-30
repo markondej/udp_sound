@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cstring>
 
-#define STREAM_CLIENT_NOP_DELAY 1000
+#define STREAM_CLIENT_NOP_DELAY 1
 #define BUFFERED_PLAYBACK_PRINT_INTERVAL 1000
 
 udpstream::Client *client = nullptr;
@@ -58,7 +58,7 @@ int main(int argc, char** argv)
                     last = now;
                     std::cout << "\rBuffered playback: " << (output.GetBufferedSamples() * 1000 / rate.load()) << " ms" << std::flush;
                 }
-                std::this_thread::sleep_for(std::chrono::microseconds(STREAM_CLIENT_NOP_DELAY));
+                std::this_thread::sleep_for(std::chrono::milliseconds(STREAM_CLIENT_NOP_DELAY));
             }
         }
         std::cout << std::endl;
