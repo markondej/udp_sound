@@ -36,53 +36,48 @@ namespace udpstream {
         IPAddress() {
             address = reinterpret_cast<sockaddr *>(new sockaddr_in);
             std::memset(address, 0, sizeof(sockaddr_in));
-            (reinterpret_cast<sockaddr_in *>(address))->sin_family = AF_INET;
+            reinterpret_cast<sockaddr_in *>(address)->sin_family = AF_INET;
         }
-        IPAddress(const std::string &address, Type type = Type::Unknown) {
+        IPAddress(const std::string &address, Type type = Type::Unknown) : IPAddress() {
             auto init = [&](Type type) {
                 switch (type) {
                 case Type::IPv6:
+                    delete this->address;
                     this->address = reinterpret_cast<sockaddr *>(new sockaddr_in6);
                     std::memset(this->address, 0, sizeof(sockaddr_in6));
-                    (reinterpret_cast<sockaddr_in6 *>(this->address))->sin6_family = AF_INET6;
-                    if (inet_pton(AF_INET6, address.c_str(), &(reinterpret_cast<sockaddr_in6 *>(this->address))->sin6_addr) <= 0) {
+                    reinterpret_cast<sockaddr_in6 *>(this->address)->sin6_family = AF_INET6;
+                    if (inet_pton(AF_INET6, address.c_str(), &reinterpret_cast<sockaddr_in6 *>(this->address)->sin6_addr) <= 0) {
                         delete this->address;
                         throw std::runtime_error("Incorrect IPv6 address provided");
                     }
                     break;
                 case Type::IPv4:
                 default:
-                    this->address = reinterpret_cast<sockaddr *>(new sockaddr_in);
-                    std::memset(this->address, 0, sizeof(sockaddr_in));
-                    (reinterpret_cast<sockaddr_in *>(this->address))->sin_family = AF_INET;
-                    if (inet_pton(AF_INET, address.c_str(), &(reinterpret_cast<sockaddr_in *>(this->address))->sin_addr) <= 0) {
+                    if (inet_pton(AF_INET, address.c_str(), &reinterpret_cast<sockaddr_in *>(this->address)->sin_addr) <= 0) {
                         delete this->address;
                         throw std::runtime_error("Incorrect IPv4 address provided");
                     }
                 }
             };
-            bool resolve = true;
             if ((type != Type::Unknown) && IsCorrect(address, type)) {
                 init(type);
-                resolve = false;
+                return;
             } else if (type == Type::Unknown) {
                 if (IsCorrect(address, Type::IPv4)) {
                     init(Type::IPv4);
-                    resolve = false;
+                    return;
                 } else if (IsCorrect(address, Type::IPv6)) {
                     init(Type::IPv6);
-                    resolve = false;
+                    return;
                 }
             }
-            if (resolve) {
-                Resolve(address, type);
-            }
+            Resolve(address, type);
         }
         IPAddress(const std::string &address, uint16_t port, Type type = Type::Unknown) : IPAddress(address, type) {
             SetPort(port);
         }
         IPAddress(unsigned long address) : IPAddress() {
-            (reinterpret_cast<sockaddr_in *>(this->address))->sin_addr.s_addr = htonl(address);
+            reinterpret_cast<sockaddr_in *>(this->address)->sin_addr.s_addr = htonl(address);
         }
         IPAddress(unsigned long address, uint16_t port) : IPAddress(address) {
             SetPort(port);
@@ -103,7 +98,7 @@ namespace udpstream {
             address = source.address;
             source.address = reinterpret_cast<sockaddr *>(new sockaddr_in);
             std::memset(source.address, 0, sizeof(sockaddr_in));
-            (reinterpret_cast<sockaddr_in *>(source.address))->sin_family = AF_INET;
+            reinterpret_cast<sockaddr_in *>(source.address)->sin_family = AF_INET;
         }
         virtual ~IPAddress() {
             delete address;
@@ -127,7 +122,7 @@ namespace udpstream {
             address = source.address;
             source.address = reinterpret_cast<sockaddr *>(new sockaddr_in);
             std::memset(source.address, 0, sizeof(sockaddr_in));
-            (reinterpret_cast<sockaddr_in *>(source.address))->sin_family = AF_INET;
+            reinterpret_cast<sockaddr_in *>(source.address)->sin_family = AF_INET;
             return *this;
         }
         IPAddress &Resolve(const std::string &address, Type type = Type::IPv4) {
@@ -167,19 +162,19 @@ namespace udpstream {
                 }
                 freeaddrinfo(result);
             }
-            throw std::runtime_error("Cannot resolve address: " + address);
+            throw std::runtime_error("Cannot resolve host address: " + address);
         }
         operator std::string() const {
             char buffer[INET6_ADDRSTRLEN];
             switch (GetType()) {
             case Type::IPv6:
-                if (inet_ntop(AF_INET6, &(reinterpret_cast<sockaddr_in6 *>(address))->sin6_addr, buffer, INET6_ADDRSTRLEN) != NULL) {
+                if (inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6 *>(address)->sin6_addr, buffer, INET6_ADDRSTRLEN) != NULL) {
                     return std::string(buffer);
                 }
                 throw std::runtime_error("Cannot convert IPv6 address structure");
             case Type::IPv4:
             default:
-                if (inet_ntop(AF_INET, &(reinterpret_cast<sockaddr_in *>(address))->sin_addr, buffer, INET6_ADDRSTRLEN) != NULL) {
+                if (inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in *>(address)->sin_addr, buffer, INET6_ADDRSTRLEN) != NULL) {
                     return std::string(buffer);
                 }
                 throw std::runtime_error("Cannot convert IPv4 address structure");
@@ -191,21 +186,21 @@ namespace udpstream {
         void SetPort(uint16_t port) {
             switch (GetType()) {
             case Type::IPv6:
-                (reinterpret_cast<sockaddr_in6 *>(address))->sin6_port = htons(port);
+                reinterpret_cast<sockaddr_in6 *>(address)->sin6_port = htons(port);
                 break;
             case Type::IPv4:
             default:
-                (reinterpret_cast<sockaddr_in *>(address))->sin_port = htons(port);
+                reinterpret_cast<sockaddr_in *>(address)->sin_port = htons(port);
             }
         }
         uint16_t GetPort() const {
             switch (GetType()) {
             case Type::IPv6:
-                return ntohs((reinterpret_cast<sockaddr_in6 *>(address))->sin6_port);
+                return ntohs(reinterpret_cast<sockaddr_in6 *>(address)->sin6_port);
                 break;
             case Type::IPv4:
             default:
-                return ntohs((reinterpret_cast<sockaddr_in *>(address))->sin_port);
+                return ntohs(reinterpret_cast<sockaddr_in *>(address)->sin_port);
             }
         }
         Type GetType() const {
@@ -649,152 +644,33 @@ namespace udpstream {
         uint8_t bitsPerChannel;
     };
 
-    class UDPServer : public Switchable {
+    class UDPSocket {
     public:
-        struct OutboundData {
-            std::vector<uint8_t> stream;
+        struct Payload {
             IPAddress address;
+            std::vector<uint8_t> data;
         };
-        using DataHandler = std::function<void(const IPAddress &address, const std::vector<uint8_t> &input)>;
-        UDPServer() : Switchable(), handler(nullptr) { }
-        UDPServer(const UDPServer &) = delete;
-        UDPServer(UDPServer &&) = delete;
-        UDPServer &operator=(const UDPServer &) = delete;
-        virtual ~UDPServer() {
-            Disable();
-            while (enabled.load()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
-            }
-            DataHandler *handler = this->handler.exchange(nullptr);
-            if (handler != nullptr) {
-                delete handler;
-            }
-        }
-        void SetHandler(const DataHandler &handler) {
-            if (handler == nullptr) {
-                return;
-            }
-            DataHandler *required = nullptr, *desired = new DataHandler(handler);
-            if (!this->handler.compare_exchange_strong(required, desired)) {
-                delete desired;
-            }
-        }
-        void Send(const IPAddress &address, const std::vector<uint8_t> &stream) {
-            std::lock_guard<std::mutex> lock(access);
-            outbound.push_back({ stream, address });
-        }
-        void Enable(const std::string &address, uint16_t port) {
-            if (!Switchable::Enable()) {
-                throw std::runtime_error("Cannot enable service (already enabled)");
-            }
-
-            int sock = -1;
-
-            try {
-                IPAddress addr(address, port);
-
-                if ((sock = socket(IPAddress::GetFamily(addr.GetType()), SOCK_DGRAM, IPPROTO_UDP)) == -1) {
-                    throw std::runtime_error("Cannot enable service (socket error)");
-                }
-
-                int flags = fcntl(sock, F_GETFL, 0);
-                if ((flags == -1) || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
-                    throw std::runtime_error("Cannot enable service (fcntl error)");
-                }
-
-                int enable = 1;
-                if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char *>(&enable), sizeof(enable)) == -1) {
-                    throw std::runtime_error("Cannot enable service (setsockopt error)");
-                }
-
-                if (bind(sock, addr.GetSockAddr(), addr.GetSockAddrLength()) == -1) {
-                    throw std::runtime_error("Cannot enable service (bind error)");
-                }
-
-                disable.store(false);
-                std::vector<uint8_t> input;
-                input.resize(UDP_SERVER_PACKET_LENGTH);
-                outbound.clear();
-                OutboundData *data;
-                socklen_t length;
-
-                while (!disable.load()) {
-                    while ((data = GetOutbound()) != nullptr) {
-                        length = data->address.GetSockAddrLength();
-                        while (true) {
-                            int bytes = sendto(sock, reinterpret_cast<char *>(data->stream.data()), static_cast<int>(data->stream.size()), 0, data->address.GetSockAddr(), length);
-                            if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
-                                break;
-                            }
-                            std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
-                        }
-                        delete data;
-                    }
-                    length = addr.GetSockAddrLength();
-                    int bytes = recvfrom(sock, reinterpret_cast<char *>(input.data()), static_cast<int>(input.size()), 0, addr.GetSockAddr(), &length);
-                    if (bytes == -1) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
-                        continue;
-                    }
-                    if (bytes) {
-                        DataHandler *handler = this->handler.load(std::memory_order_consume);
-                        if (handler != nullptr) {
-                            (*handler)(addr, std::vector<uint8_t>(input.begin(), input.begin() + bytes));
-                        }
-                    }
-                }
-
-                close(sock);
-            } catch (...) {
-                if (sock != -1) {
-                    close(sock);
-                }
-                enabled.store(false);
-                throw;
-            }
-            enabled.store(false);
-        }
-    private:
-        OutboundData *GetOutbound() {
-            std::lock_guard<std::mutex> lock(access);
-            if (outbound.empty()) {
-                return nullptr;
-            }
-            OutboundData *outbound = new OutboundData;
-            outbound->stream = this->outbound.begin()->stream;
-            outbound->address = this->outbound.begin()->address;
-            this->outbound.erase(this->outbound.begin());
-            return outbound;
-        }
-        std::vector<OutboundData> outbound;
-        std::atomic<DataHandler *> handler;
-        std::mutex access;
-    };
-
-    class UDPClient {
-    public:
-        UDPClient() : sock(-1) { };
-        UDPClient(const UDPClient &) = delete;
-        UDPClient(UDPClient &&) = delete;
-        virtual ~UDPClient() {
+        UDPSocket() : sock(-1) { };
+        UDPSocket(const UDPSocket &) = delete;
+        UDPSocket(UDPSocket &&) = delete;
+        virtual ~UDPSocket() {
             Disable();
         }
-        UDPClient &operator=(const UDPClient &) = delete;
-        void Enable(const std::string &address, uint16_t port) {
-            addr = IPAddress(address, port);
+        UDPSocket &operator=(const UDPSocket &) = delete;
+        void Enable(IPAddress::Type type) {
+            if (IsEnabled()) {
+                throw std::runtime_error("Cannot initialize UDP socket (already enabled)");
+            }
 
-            if ((sock = socket(IPAddress::GetFamily(addr.GetType()), SOCK_DGRAM, IPPROTO_UDP)) == -1) {
-                throw std::runtime_error("Cannot initialize connection (socket error)");
+            if ((sock = socket(IPAddress::GetFamily(type), SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+                throw std::runtime_error("Cannot initialize UDP socket (socket error)");
             }
 
             int flags = fcntl(sock, F_GETFL, 0);
             if ((flags == -1) || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
                 close(sock);
-                throw std::runtime_error("Cannot initialize connection (fcntl error)");
+                throw std::runtime_error("Cannot initialize UDP socket (fcntl error)");
             }
-        }
-        bool IsEnabled() const noexcept {
-            return (sock != -1);
         }
         void Disable() noexcept {
             if (!IsEnabled()) {
@@ -803,35 +679,74 @@ namespace udpstream {
             close(sock);
             sock = -1;
         }
-        std::vector<uint8_t> Receive() const {
-            if (!IsEnabled()) {
-                throw std::runtime_error("Cannot receive data (client disabled)");
-            }
-            std::vector<uint8_t> stream;
-            stream.resize(UDP_SERVER_PACKET_LENGTH);
-            socklen_t length = addr.GetSockAddrLength();
-            int bytes = recvfrom(sock, reinterpret_cast<char *>(stream.data()), static_cast<int>(stream.size()), 0, addr.GetSockAddr(), &length);
-            if (bytes == -1) {
-                return std::vector<uint8_t>();
-            }
-            return std::vector<uint8_t>(stream.begin(), stream.begin() + bytes);
+        bool IsEnabled() const noexcept {
+            return (sock != -1);
         }
-        void Send(const std::vector<uint8_t> &stream) const {
+        void Send(const IPAddress &address, const std::vector<uint8_t> &data) const {
             if (!IsEnabled()) {
-                throw std::runtime_error("Cannot send data (client disabled)");
+                throw std::runtime_error("Cannot send data (socket disabled)");
             }
-            socklen_t length = addr.GetSockAddrLength();
+            socklen_t length = address.GetSockAddrLength();
             while (true) {
-                int bytes = sendto(sock, reinterpret_cast<const char *>(stream.data()), static_cast<int>(stream.size()), 0, addr.GetSockAddr(), length);
+                int bytes = sendto(sock, reinterpret_cast<const char *>(data.data()), static_cast<int>(data.size()), 0, address.GetSockAddr(), length);
                 if ((bytes != -1) || ((errno != EWOULDBLOCK) && (errno != EAGAIN))) {
                     break;
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
             }
         }
-    private:
+        Payload Receive() const {
+            if (!IsEnabled()) {
+                throw std::runtime_error("Cannot receive data (socket disabled)");
+            }
+            IPAddress address;
+            std::vector<uint8_t> data;
+            data.resize(UDP_SERVER_PACKET_LENGTH);
+            socklen_t length = address.GetSockAddrLength();
+            int bytes = recvfrom(sock, reinterpret_cast<char *>(data.data()), static_cast<int>(data.size()), 0, address.GetSockAddr(), &length);
+            if (bytes == -1) {
+                return { IPAddress(), std::vector<uint8_t>() };
+            }
+            return { address, std::vector<uint8_t>(data.begin(), data.begin() + bytes) };
+        }
+    protected:
         int sock;
-        IPAddress addr;
+    };
+
+    class UDPServer : public UDPSocket {
+    public:
+        void Enable(const std::string &address, uint16_t port) {
+            IPAddress ip(address, port);
+
+            UDPSocket::Enable(ip.GetType());
+
+            int enable = 1;
+            if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char *>(&enable), sizeof(enable)) == -1) {
+                UDPSocket::Disable();
+                throw std::runtime_error("Cannot enable server (setsockopt error)");
+            }
+
+            if (bind(sock, ip.GetSockAddr(), ip.GetSockAddrLength()) == -1) {
+                UDPSocket::Disable();
+                throw std::runtime_error("Cannot enable server (bind error)");
+            }
+        }
+    };
+
+    class UDPClient : public UDPSocket {
+    public:
+        void Enable(const std::string &address, uint16_t port) {
+            ip = IPAddress(address, port);
+            UDPSocket::Enable(ip.GetType());
+        }
+        void Send(const std::vector<uint8_t> &stream) const {
+            UDPSocket::Send(ip, stream);
+        }
+        std::vector<uint8_t> Receive() const {
+            return UDPSocket::Receive().data;
+        }
+    private:
+        IPAddress ip;
     };
 
     Service::Service(const DataHandler &dataHandler, const ExceptionHandler &exceptionHandler, const LogHandler &logHandler)
@@ -902,60 +817,39 @@ namespace udpstream {
             }
         };
 
-        std::mutex access;
         struct Registered {
             IPAddress address;
             std::chrono::time_point<std::chrono::system_clock> timestamp;
         } *registered = nullptr;
 
-        std::atomic_bool error(false);
-        std::thread serverThread([&]() {
-            printText("Starting service on: " + address + ":" + std::to_string(port));
-            server.SetHandler([&](const IPAddress &address, const std::vector<uint8_t> &input) {
-                if (input.size() == 1) {
-                    switch (input[0]) {
-                    case UDP_STREAM_CLIENT_REQUEST_REGISTER:
-                    {
-                        std::chrono::time_point<std::chrono::system_clock> current = std::chrono::system_clock::now();
-                        std::lock_guard<std::mutex> lock(access);
-                        if ((registered != nullptr) && (registered->address == address)) {
-                            registered->timestamp = current;
-                        } else if (registered == nullptr) {
-                            registered = new Registered({ address, current });
-                            printText("Client " + static_cast<std::string>(address) + ":" + std::to_string(address.GetPort()) + " registered");
-                        }
+        auto handleRequest = [&](const UDPSocket::Payload &request) -> bool {
+            std::chrono::time_point<std::chrono::system_clock> current = std::chrono::system_clock::now();
+            if (request.data.size() == 1) {
+                switch (request.data[0]) {
+                case UDP_STREAM_CLIENT_REQUEST_REGISTER:
+                    if ((registered != nullptr) && (registered->address == request.address)) {
+                        registered->timestamp = current;
+                    } else if (registered == nullptr) {
+                        registered = new Registered({ request.address, current });
+                        printText("Client " + static_cast<std::string>(request.address) + ":" + std::to_string(request.address.GetPort()) + " registered");
                     }
                     break;
-                    case UDP_STREAM_CLIENT_REQUEST_UNREGISTER:
-                    {
-                        std::lock_guard<std::mutex> lock(access);
-                        if ((registered != nullptr) && registered->address == address) {
-                            printText("Client " + static_cast<std::string>(address) + ":" + std::to_string(address.GetPort()) + " unregistered");
-                            delete registered;
-                            registered = nullptr;
-                        }
+                case UDP_STREAM_CLIENT_REQUEST_UNREGISTER:
+                    if ((registered != nullptr) && registered->address == request.address) {
+                        printText("Client " + static_cast<std::string>(request.address) + ":" + std::to_string(request.address.GetPort()) + " unregistered");
+                        delete registered;
+                        registered = nullptr;
                     }
                     break;
-                    default:
-                        break;
-                    }
+                default:
+                    break;
                 }
-            });
-
-            try {
-                server.Enable(address, port);
-            } catch (std::exception &exception) {
-                handleException(exception);
-                error.store(true);
+                return true;
             }
-        });
-
-        while (!instance->disable.load() && !server.IsEnabled()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
-        }
+            return false;
+        };
 
         auto handleTimeout = [&]() {
-            std::lock_guard<std::mutex> lock(access);
             if ((registered != nullptr) && (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - registered->timestamp).count() > UDP_STREAM_REGISTER_TIMEOUT)) {
                 printText("Client " + static_cast<std::string>(registered->address) + ":" + std::to_string(registered->address.GetPort()) + " unregistered");
                 delete registered;
@@ -965,23 +859,24 @@ namespace udpstream {
 
         uint32_t identifier = 0;
         try {
+            printText("Starting service on: " + address + ":" + std::to_string(port));
+            server.Enable(address, port);
+
             inputDevice.Enable(device, samplingRate, channels, bitsPerChannel);
-            while (!instance->disable.load() && !error.load()) {
+
+            while (!instance->disable.load()) {
                 std::string error = inputDevice.GetError();
                 if (!error.empty()) {
                     throw std::runtime_error(error.c_str());
                 }
+                while (handleRequest(server.Receive()));
                 handleTimeout();
                 std::vector<uint8_t> *stream = inputDevice.GetData();
                 if (stream != nullptr) {
-                    Registered client;
-                    {
-                        std::lock_guard<std::mutex> lock(access);
-                        if (registered == nullptr) {
-                            std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
-                            continue;
-                        }
-                        client = *registered;
+                    if (registered == nullptr) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
+                        delete stream;
+                        continue;
                     }
                     handleData(stream->data(), stream->size());
                     while (!stream->empty()) {
@@ -996,7 +891,7 @@ namespace udpstream {
                         packet.resize(sizeof(PacketHeader) + size);
                         std::memcpy(packet.data(), &header, sizeof(PacketHeader));
                         std::memcpy(&packet[sizeof(PacketHeader)], stream->data(), size);
-                        server.Send(client.address, packet);
+                        server.Send(registered->address, packet);
                         stream->erase(stream->begin(), stream->begin() + size);
                         std::this_thread::sleep_for(std::chrono::milliseconds(std::max(size * 500 / (samplingRate * (bitsPerChannel >> 3) * channels), static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
                         identifier++;
@@ -1009,10 +904,7 @@ namespace udpstream {
         } catch (std::exception &exception) {
             handleException(exception);
         }
-        server.Disable();
-        if (serverThread.joinable()) {
-            serverThread.join();
-        }
+
         if (registered != nullptr) {
             delete registered;
         }
