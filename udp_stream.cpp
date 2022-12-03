@@ -14,13 +14,12 @@
 
 #define UDP_SERVER_NOP_DELAY 1
 
+#define UDP_STREAM_NOP_DELAY 10
 #define UDP_STREAM_REGISTER_TIMEOUT 5000
-#define UDP_STREAM_NOP_DELAY 1
 #define UDP_STREAM_PERIOD_DURATION 25
 #define UDP_STREAM_BUFFERED_PERIODS 4
-
-#define UDP_STREAM_LOADED_DATA_DURATION_THRESHOLD 300
-#define UDP_STREAM_LOADED_DATA_DURATION_LIMIT 750
+#define UDP_STREAM_SOUND_MIN_DURATION 125
+#define UDP_STREAM_SOUND_DURATION_LIMIT 500
 
 #define UDP_STREAM_CLIENT_REQUEST_REGISTER 0x01
 #define UDP_STREAM_CLIENT_REQUEST_UNREGISTER 0x02
@@ -389,7 +388,7 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Cannot verify available frames (" + std::string(snd_strerror(error)) + ")");
                     } else if (static_cast<unsigned long>(error) < frames) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
                         continue;
                     }
                     error = snd_pcm_readi(handle, buffer, frames);
@@ -540,7 +539,7 @@ namespace udpstream {
                 throw std::runtime_error("Cannot set period duration: " + std::to_string(UDP_STREAM_PERIOD_DURATION) + " ms (" + std::string(snd_strerror(error)) + ")");
             }
             snd_pcm_uframes_t frameBuffer = frames * UDP_STREAM_BUFFERED_PERIODS;
-            error = snd_pcm_hw_params_set_buffer_size_near(handle, params, &frames);
+            error = snd_pcm_hw_params_set_buffer_size_near(handle, params, &frameBuffer);
             if (error < 0) {
                 throw std::runtime_error("Cannot set buffer size: " + std::to_string(samplingRate * UDP_STREAM_PERIOD_DURATION * UDP_STREAM_BUFFERED_PERIODS / 1000) + " (" + std::string(snd_strerror(error)) + ")");
             }
@@ -564,11 +563,11 @@ namespace udpstream {
                     std::size_t offset = data.size();
                     data.resize(offset + stored->size());
                     std::memcpy(&data[offset], stored->data(), stored->size());
-                    size_t limit = samplingRate * UDP_STREAM_LOADED_DATA_DURATION_LIMIT / 1000 * (bitsPerChannel >> 3) * channels;
+                    size_t limit = samplingRate * UDP_STREAM_SOUND_DURATION_LIMIT / 1000 * (bitsPerChannel >> 3) * channels;
                     if (data.size() > limit) {
                         data.erase(data.begin(), data.begin() + data.size() - limit);
                     }
-                    if (wait && (data.size() >= samplingRate * UDP_STREAM_LOADED_DATA_DURATION_THRESHOLD / 1000 * (bitsPerChannel >> 3) * channels)) {
+                    if (wait && (data.size() >= samplingRate * UDP_STREAM_SOUND_MIN_DURATION / 1000 * (bitsPerChannel >> 3) * channels)) {
                         wait = false;
                     }
                     instance->buffered.store(data.size() / ((bitsPerChannel >> 3) * channels));
@@ -600,7 +599,7 @@ namespace udpstream {
                     }
                 }
                 if (nop) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_NOP_DELAY));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
                     continue;
                 }
                 error = snd_pcm_writei(handle, buffer, frames);

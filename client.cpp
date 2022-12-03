@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cstring>
 
-#define STREAM_CLIENT_NOP_DELAY 1
+#define STREAM_CLIENT_NOP_DELAY 500
 #define BUFFERED_PLAYBACK_PRINT_INTERVAL 1000
 
 udpstream::Client *client = nullptr;
