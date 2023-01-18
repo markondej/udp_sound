@@ -263,8 +263,7 @@ namespace udpstream {
 
     bool Switchable::Enable() noexcept
     {
-        bool required = false;
-        return enabled.compare_exchange_strong(required, true);
+        return !enabled.exchange(true);
     }
 
     class InputDevice : public Switchable {
