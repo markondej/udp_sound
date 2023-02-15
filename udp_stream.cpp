@@ -272,7 +272,11 @@ namespace udpstream {
         InputDevice(const InputDevice &) = delete;
         InputDevice(InputDevice &&) = delete;
         virtual ~InputDevice() {
-            Disable();
+            if (!Disable()) {
+                while (IsEnabled()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
+                }
+            }
             auto data = this->data.exchange(nullptr);
             if (data != nullptr) {
                 delete data;
@@ -437,7 +441,11 @@ namespace udpstream {
     }
 
     OutputDevice::~OutputDevice() {
-        Disable();
+        if (!Disable()) {
+            while (IsEnabled()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
+            }
+        }
         auto data = this->data.exchange(nullptr);
         if (data != nullptr) {
             delete data;
@@ -754,7 +762,11 @@ namespace udpstream {
 
     Service::~Service()
     {
-        Disable();
+        if (!Disable()) {
+            while (IsEnabled()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
+            }
+        }
     }
 
     void Service::Enable(
@@ -917,7 +929,11 @@ namespace udpstream {
 
     Client::~Client()
     {
-        Disable();
+        if (!Disable()) {
+            while (IsEnabled()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
+            }
+        }
     }
 
     void Client::Enable(const std::string &address, uint16_t port, const std::string &device)
