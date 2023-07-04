@@ -352,10 +352,10 @@ namespace udpstream {
                 unsigned rate = samplingRate; int dir;
                 error = snd_pcm_hw_params_set_rate_near(handle, params, &rate, &dir);
                 if (error < 0) {
-                    throw std::runtime_error("Cannot set samplig rate: " + std::to_string(samplingRate) + " (" + std::string(snd_strerror(error)) + ")");
+                    throw std::runtime_error("Cannot set sampling rate: " + std::to_string(samplingRate) + " (" + std::string(snd_strerror(error)) + ")");
                 }
                 if (rate != samplingRate) {
-                    throw std::runtime_error("Cannot set samplig rate: " + std::to_string(samplingRate));
+                    throw std::runtime_error("Cannot set sampling rate: " + std::to_string(samplingRate));
                 }
                 snd_pcm_uframes_t frames = samplingRate * UDP_STREAM_PERIOD_DURATION / 1000;
                 error = snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
@@ -534,10 +534,10 @@ namespace udpstream {
             unsigned rate = samplingRate; int dir;
             error = snd_pcm_hw_params_set_rate_near(handle, params, &rate, &dir);
             if (error < 0) {
-                throw std::runtime_error("Cannot set samplig rate: " + std::to_string(samplingRate) + " (" + std::string(snd_strerror(error)) + ")");
+                throw std::runtime_error("Cannot set sampling rate: " + std::to_string(samplingRate) + " (" + std::string(snd_strerror(error)) + ")");
             }
             if (rate != samplingRate) {
-                throw std::runtime_error("Cannot set samplig rate: " + std::to_string(samplingRate));
+                throw std::runtime_error("Cannot set sampling rate: " + std::to_string(samplingRate));
             }
 
             snd_pcm_uframes_t frames = samplingRate * UDP_STREAM_PERIOD_DURATION / 1000;
