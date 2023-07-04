@@ -20,7 +20,6 @@ int main(int argc, char** argv)
     uint32_t samplingRate = UDP_STREAM_DEFAULT_SAMPLE_RATE;
     uint16_t port = UDP_STREAM_DEFAULT_PORT;
     uint8_t channels = UDP_STREAM_DEFAULT_CHANNELS, bitsPerChannel = UDP_STREAM_DEFAULT_BITS;
-	std::atomic_bool useFir(false);
 
     if (argc > 1) { address = argv[1]; }
     if (argc > 2) { port = std::stoi(argv[2]); }
@@ -28,7 +27,6 @@ int main(int argc, char** argv)
     if (argc > 4) { samplingRate = std::stoi(argv[4]); }
     if (argc > 5) { channels = std::stoi(argv[5]); }
     if (argc > 6) { bitsPerChannel = std::stoi(argv[6]); }
-    if (argc > 7) { useFir = static_cast<bool>(std::stoi(argv[7])); }
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTSTP, signalHandler);
