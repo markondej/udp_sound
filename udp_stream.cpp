@@ -582,7 +582,7 @@ namespace udpstream {
                 }
                 bool nop = wait;
                 if (!nop) {
-                    error = snd_pcm_avail_update(handle);
+                    error = snd_pcm_avail(handle);
                     if (error == -EPIPE) {
                         /* EPIPE: Underrun */
                         error = snd_pcm_prepare(handle);
