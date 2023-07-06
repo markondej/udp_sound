@@ -606,7 +606,7 @@ namespace udpstream {
                     }
                 }
                 if (nop) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(std::max(frames * 500 / samplingRate, static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
                     continue;
                 }
                 error = snd_pcm_writei(handle, buffer, frames);
