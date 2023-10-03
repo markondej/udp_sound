@@ -1,10 +1,10 @@
 #pragma once
 
 #include <functional>
+#include <string>
 #include <vector>
 #include <thread>
 #include <atomic>
-#include <mutex>
 
 #define UDP_STREAM_DEFAULT_INPUT_DEVICE "default"
 #define UDP_STREAM_DEFAULT_OUTPUT_DEVICE "default"
@@ -20,16 +20,16 @@ namespace udpstream {
     class Switchable {
     public:
         Switchable();
-        bool IsEnabled() const noexcept;
+        bool IsEnabled() const;
         virtual bool Disable();
     protected:
-        bool Enable() noexcept;
-        std::atomic_bool enabled, disable;
+        bool Enable();
+        std::atomic_bool enabled;
     };
 
-    using ExceptionHandler = std::function<void(const std::exception &exception) noexcept>;
-    using LogHandler = std::function<void(const std::string &text) noexcept>;
-    using DataHandler = std::function<void(uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) noexcept>;
+    using ExceptionHandler = std::function<void(const std::exception &exception)>;
+    using LogHandler = std::function<void(const std::string &text)>;
+    using DataHandler = std::function<void(uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size)>;
 
     class Service : public Switchable {
     public:
@@ -63,7 +63,7 @@ namespace udpstream {
             const DataHandler &dataHandler = nullptr,
             const ExceptionHandler &exceptionHandler = nullptr,
             const LogHandler &logHandler = nullptr
-        ) noexcept;
+        );
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
@@ -90,7 +90,7 @@ namespace udpstream {
             const std::string &device,
             const DataHandler &dataHandler = nullptr,
             const ExceptionHandler &exceptionHandler = nullptr
-        ) noexcept;
+        );
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         std::thread thread;
