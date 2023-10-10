@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     if (argc > 3) { device = argv[3]; }
 
     std::signal(SIGINT, signalHandler);
-    std::signal(SIGTSTP, signalHandler);
+    std::signal(SIGTERM, signalHandler);
 
     int result = EXIT_SUCCESS;
 
