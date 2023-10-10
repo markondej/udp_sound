@@ -29,7 +29,7 @@ int main(int argc, char** argv)
     if (argc > 6) { bitsPerChannel = std::stoi(argv[6]); }
 
     std::signal(SIGINT, signalHandler);
-    std::signal(SIGTSTP, signalHandler);
+    std::signal(SIGTERM, signalHandler);
 
     int result = EXIT_SUCCESS;
 
