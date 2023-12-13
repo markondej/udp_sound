@@ -391,7 +391,7 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Cannot verify available frames (" + std::string(snd_strerror(error)) + ")");
                     } else if (static_cast<unsigned long>(error) < frames) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(100000 * frames / samplingRate, static_cast<uint32_t>(UDP_STREAM_NOP_DELAY))));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(500 * frames / samplingRate, static_cast<uint32_t>(UDP_STREAM_NOP_DELAY))));
                         continue;
                     }
                     error = snd_pcm_readi(handle, buffer, frames);
@@ -605,7 +605,7 @@ namespace udpstream {
                     }
                 }
                 if (nop) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(std::max(100000 * frames / samplingRate, static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(std::max(500 * frames / samplingRate, static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
                     continue;
                 }
                 error = snd_pcm_writei(handle, buffer, frames);
