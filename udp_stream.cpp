@@ -412,7 +412,6 @@ namespace udpstream {
                     if (stored != nullptr) {
                         delete stored;
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(std::max(error * 500 / samplingRate, static_cast<uint32_t>(UDP_STREAM_NOP_DELAY))));
                 }
             } catch (std::exception &catched) {
                 std::string *error = new std::string(catched.what());
