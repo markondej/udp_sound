@@ -1,5 +1,4 @@
 #include "udp_stream.hpp"
-#include <mutex>
 #include <regex>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -15,11 +14,11 @@
 
 #define UDP_SERVER_NOP_DELAY 1
 
-#define UDP_STREAM_NOP_DELAY 10
+#define UDP_STREAM_NOP_DELAY 5
 #define UDP_STREAM_REGISTER_TIMEOUT 5000
-#define UDP_STREAM_PERIOD_DURATION 25
-#define UDP_STREAM_BUFFERED_PERIODS 4
-#define UDP_STREAM_SOUND_MIN_DURATION 125
+#define UDP_STREAM_PERIOD_DURATION 20
+#define UDP_STREAM_BUFFERED_PERIODS 8
+#define UDP_STREAM_SOUND_MIN_DURATION 200
 #define UDP_STREAM_SOUND_DURATION_LIMIT 500
 
 #define UDP_STREAM_CLIENT_REQUEST_REGISTER 0x01
@@ -266,29 +265,18 @@ namespace udpstream {
 
     class InputDevice : public Switchable {
     public:
-        InputDevice() : Switchable(), data(nullptr), error(nullptr) { }
+        InputDevice() : Switchable() { }
         InputDevice(const InputDevice &) = delete;
         InputDevice(InputDevice &&) = delete;
         virtual ~InputDevice() {
             Disable();
-            auto data = this->data.exchange(nullptr);
-            if (data != nullptr) {
-                delete data;
-            }
-            auto error = this->error.exchange(nullptr);
-            if (error != nullptr) {
-                delete error;
-            }
         }
         InputDevice &operator=(const InputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
             if (!Switchable::Enable()) {
                 return;
             }
-            auto data = this->data.exchange(nullptr);
-            if (data != nullptr) {
-                delete data;
-            }
+            data.clear();
             try {
                 thread = std::thread(DeviceThread, this, device, samplingRate, channels, bitsPerChannel);
             } catch (...) {
@@ -305,17 +293,13 @@ namespace udpstream {
             }
             return false;
         }
-        std::string GetError() {
-            std::string error;
-            auto stored = this->error.exchange(nullptr);
-            if (stored != nullptr) {
-                error = std::move(*stored);
-                delete stored;
-            }
+        std::string GetError() const {
+            std::lock_guard<std::mutex> lock(sync);
             return error;
         }
-        std::vector<uint8_t> *GetData() {
-            return data.exchange(nullptr);
+        std::vector<uint8_t> GetData() {
+            std::lock_guard<std::mutex> lock(sync);
+            return std::move(data);
         }
     private:
         static void DeviceThread(InputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
@@ -405,20 +389,14 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Error while reading from device (" + std::string(snd_strerror(error)) + ")");
                     }
-                    std::vector<uint8_t> *data = new std::vector<uint8_t>();
-                    data->resize(error * (bitsPerChannel >> 3) * channels);
-                    std::memcpy(data->data(), buffer, data->size());
-                    auto stored = instance->data.exchange(data);
-                    if (stored != nullptr) {
-                        delete stored;
-                    }
+                    std::lock_guard<std::mutex> lock(instance->sync);
+                    std::size_t offset = instance->data.size(), bytes = error * (bitsPerChannel >> 3) * channels;
+                    instance->data.resize(offset + bytes);
+                    std::memcpy(&instance->data[offset], buffer, bytes);
                 }
             } catch (std::exception &catched) {
-                std::string *error = new std::string(catched.what());
-                auto stored = instance->error.exchange(error);
-                if (stored != nullptr) {
-                    delete stored;
-                }
+                std::lock_guard<std::mutex> lock(instance->sync);
+                instance->error = catched.what();
             }
 
             /* if (handle != nullptr) {
@@ -429,34 +407,24 @@ namespace udpstream {
                 delete[] buffer;
             }
         }
-        std::atomic<std::vector<uint8_t> *> data;
-        std::atomic<std::string *> error;
+        mutable std::mutex sync;
+        std::vector<uint8_t> data;
         std::thread thread;
+        std::string error;
     };
 
-    OutputDevice::OutputDevice() : Switchable(), data(nullptr), error(nullptr), buffered(0) {
+    OutputDevice::OutputDevice() : Switchable() {
     }
 
     OutputDevice::~OutputDevice() {
         Disable();
-        auto data = this->data.exchange(nullptr);
-        if (data != nullptr) {
-            delete data;
-        }
-        auto error = this->error.exchange(nullptr);
-        if (error != nullptr) {
-            delete error;
-        }
     }
 
     void OutputDevice::Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
         if (!Switchable::Enable()) {
             return;
         }
-        auto data = this->data.exchange(nullptr);
-        if (data != nullptr) {
-            delete data;
-        }
+        data.clear();
         try {
             thread = std::thread(DeviceThread, this, device, samplingRate, channels, bitsPerChannel);\
         } catch (...) {
@@ -475,28 +443,21 @@ namespace udpstream {
         return false;
     }
 
-    std::string OutputDevice::GetError() {
-        std::string error;
-        auto stored = this->error.exchange(nullptr);
-        if (stored != nullptr) {
-            error = std::move(*stored);
-            delete stored;
-        }
+    std::string OutputDevice::GetError() const {
+        std::lock_guard<std::mutex> lock(sync);
         return error;
     }
 
     void OutputDevice::SetData(const uint8_t *data, std::size_t size) {
-        std::vector<uint8_t> *produced = new std::vector<uint8_t>();
-        produced->resize(size);
-        std::memcpy(produced->data(), data, size);
-        auto stored = this->data.exchange(produced);
-        if (stored != nullptr) {
-            delete stored;
-        }
+        std::lock_guard<std::mutex> lock(sync);
+        std::size_t offset = this->data.size();
+        this->data.resize(offset + size);
+        std::memcpy(&this->data[offset], data, size);
     }
 
     std::size_t OutputDevice::GetBufferedSamples() const {
-        return buffered.load();
+        std::lock_guard<std::mutex> lock(sync);
+        return buffered;
     }
 
     void OutputDevice::DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
@@ -544,8 +505,8 @@ namespace udpstream {
             if (error < 0) {
                 throw std::runtime_error("Cannot set period duration: " + std::to_string(UDP_STREAM_PERIOD_DURATION) + " ms (" + std::string(snd_strerror(error)) + ")");
             }
-            snd_pcm_uframes_t frameBuffer = frames * UDP_STREAM_BUFFERED_PERIODS;
-            error = snd_pcm_hw_params_set_buffer_size_near(handle, params, &frameBuffer);
+            frames *= UDP_STREAM_BUFFERED_PERIODS;
+            error = snd_pcm_hw_params_set_buffer_size_near(handle, params, &frames);
             if (error < 0) {
                 throw std::runtime_error("Cannot set buffer size: " + std::to_string(samplingRate * UDP_STREAM_PERIOD_DURATION * UDP_STREAM_BUFFERED_PERIODS / 1000) + " (" + std::string(snd_strerror(error)) + ")");
             }
@@ -556,31 +517,29 @@ namespace udpstream {
             }
 
             snd_pcm_hw_params_get_period_size(params, &frames, &dir);
-            snd_pcm_hw_params_get_buffer_size(params, &frameBuffer);
             std::size_t size = frames * (bitsPerChannel >> 3) * channels;
             buffer = new uint8_t[size];
 
-            bool loaded = false, wait = true;
-            std::memset(buffer, 0x00, size);
-            std::vector<uint8_t> data;
+            bool loaded = false, ready = false;
             while (instance->IsEnabled()) {
-                auto stored = instance->data.exchange(nullptr);
-                if (stored != nullptr) {
-                    std::size_t offset = data.size();
-                    data.resize(offset + stored->size());
-                    std::memcpy(&data[offset], stored->data(), stored->size());
-                    size_t limit = samplingRate * UDP_STREAM_SOUND_DURATION_LIMIT / 1000 * (bitsPerChannel >> 3) * channels;
-                    if (data.size() > limit) {
-                        data.erase(data.begin(), data.begin() + data.size() - limit);
-                    }
-                    if (wait && (data.size() >= samplingRate * UDP_STREAM_SOUND_MIN_DURATION / 1000 * (bitsPerChannel >> 3) * channels)) {
-                        wait = false;
-                    }
-                    instance->buffered.store(data.size() / ((bitsPerChannel >> 3) * channels));
-                    delete stored;
+                std::unique_lock<std::mutex> lock(instance->sync);
+                std::size_t offset = instance->data.size();
+                if (!loaded && (offset >= size)) {
+                    std::memcpy(buffer, &instance->data[0], size);
+                    loaded = true;
                 }
-                bool nop = wait;
-                if (!nop) {
+                std::size_t limit = samplingRate * UDP_STREAM_SOUND_DURATION_LIMIT / 1000 * (bitsPerChannel >> 3) * channels;
+                if (instance->data.size() > limit) {
+                    instance->data.erase(instance->data.begin(), instance->data.begin() + offset - limit);
+                }
+                limit = samplingRate * UDP_STREAM_SOUND_MIN_DURATION / 1000 * (bitsPerChannel >> 3) * channels;
+                if (!ready && (offset >= limit)) {
+                    ready = true;
+                }
+                instance->buffered = offset / ((bitsPerChannel >> 3) * channels);
+                lock.unlock();
+                bool wait = !ready || !loaded;
+                if (!wait) {
                     error = snd_pcm_avail(handle);
                     if (error == -EPIPE) {
                         /* EPIPE: Underrun */
@@ -592,19 +551,10 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Cannot verify available frames (" + std::string(snd_strerror(error)) + ")");
                     } else if (static_cast<unsigned long>(error) < frames) {
-                        nop = true;
-                    }
-                }
-                if (!nop && !loaded) {
-                    if (data.size() < size) {
                         wait = true;
-                        nop = true;
-                    } else {
-                        std::memcpy(buffer, data.data(), size);
-                        loaded = true;
                     }
                 }
-                if (nop) {
+                if (wait) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(static_cast<int>(500 * frames / samplingRate), UDP_STREAM_NOP_DELAY)));
                     continue;
                 }
@@ -619,16 +569,14 @@ namespace udpstream {
                 } else if (error < 0) {
                     throw std::runtime_error("Error while writing to device (" + std::string(snd_strerror(error)) + ")");
                 }
-                data.erase(data.begin(), data.begin() + error * (bitsPerChannel >> 3) * channels);
-                instance->buffered.store(data.size() / ((bitsPerChannel >> 3) * channels));
+                lock.lock();
+                instance->data.erase(instance->data.begin(), instance->data.begin() + error * (bitsPerChannel >> 3) * channels);
+                instance->buffered = instance->data.size() / ((bitsPerChannel >> 3) * channels);
                 loaded = false;
             }
         } catch (std::exception &catched) {
-            std::string *error = new std::string(catched.what());
-            auto stored = instance->error.exchange(error);
-            if (stored != nullptr) {
-                delete stored;
-            }
+            std::lock_guard<std::mutex> lock(instance->sync);
+            instance->error = catched.what();
         }
 
         /* if (handle != nullptr) {
@@ -837,15 +785,15 @@ namespace udpstream {
             if (request.data.size() == 1) {
                 switch (request.data[0]) {
                 case UDP_STREAM_CLIENT_REQUEST_REGISTER:
-                    if ((registered != nullptr) && (registered->address == request.address)) {
+                    if (registered && (registered->address == request.address)) {
                         registered->timestamp = current;
-                    } else if (registered == nullptr) {
+                    } else if (!registered) {
                         registered = new Registered({ request.address, current });
                         printText("Client " + static_cast<std::string>(request.address) + ":" + std::to_string(request.address.GetPort()) + " registered");
                     }
                     break;
                 case UDP_STREAM_CLIENT_REQUEST_UNREGISTER:
-                    if ((registered != nullptr) && registered->address == request.address) {
+                    if (registered && registered->address == request.address) {
                         printText("Client " + static_cast<std::string>(request.address) + ":" + std::to_string(request.address.GetPort()) + " unregistered");
                         delete registered;
                         registered = nullptr;
@@ -881,15 +829,14 @@ namespace udpstream {
                 }
                 while (handleRequest(server.Receive()));
                 handleTimeout();
-                std::vector<uint8_t> *stream = inputDevice.GetData();
-                if (stream != nullptr) {
-                    if (registered == nullptr) {
+                std::vector<uint8_t> data = inputDevice.GetData();
+                if (!data.empty()) {
+                    if (!registered) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
-                        delete stream;
                         continue;
                     }
-                    handleData(stream->data(), stream->size());
-                    while (!stream->empty()) {
+                    handleData(&data[0], data.size());
+                    while (!data.empty()) {
                         PacketHeader header = {
                             identifier,
                             samplingRate,
@@ -897,16 +844,15 @@ namespace udpstream {
                             bitsPerChannel
                         };
                         std::vector<uint8_t> packet;
-                        std::size_t size = std::min(stream->size(), UDP_SERVER_PACKET_LENGTH - sizeof(PacketHeader));
+                        std::size_t size = std::min(data.size(), UDP_SERVER_PACKET_LENGTH - sizeof(PacketHeader));
                         packet.resize(sizeof(PacketHeader) + size);
                         std::memcpy(packet.data(), &header, sizeof(PacketHeader));
-                        std::memcpy(&packet[sizeof(PacketHeader)], stream->data(), size);
+                        std::memcpy(&packet[sizeof(PacketHeader)], &data[0], size);
                         server.Send(registered->address, packet);
-                        stream->erase(stream->begin(), stream->begin() + size);
-                        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(size * 500 / (samplingRate * (bitsPerChannel >> 3) * channels), static_cast<std::size_t>(UDP_STREAM_NOP_DELAY))));
+                        data.erase(data.begin(), data.begin() + size);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(static_cast<int>(size * 500 / (samplingRate * (bitsPerChannel >> 3) * channels)), UDP_STREAM_NOP_DELAY)));
                         identifier++;
                     }
-                    delete stream;
                 } else {
                     std::this_thread::sleep_for(std::chrono::milliseconds(UDP_STREAM_NOP_DELAY));
                 }

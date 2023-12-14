@@ -5,6 +5,7 @@
 #include <vector>
 #include <thread>
 #include <atomic>
+#include <mutex>
 
 #define UDP_STREAM_DEFAULT_INPUT_DEVICE "default"
 #define UDP_STREAM_DEFAULT_OUTPUT_DEVICE "default"
@@ -105,14 +106,15 @@ namespace udpstream {
         OutputDevice &operator=(const OutputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
         bool Disable();
-        std::string GetError();
+        std::string GetError() const;
         void SetData(const uint8_t *data, std::size_t size);
         std::size_t GetBufferedSamples() const;
     private:
         static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
-        std::atomic<std::vector<uint8_t> *> data;
-        std::atomic<std::string *> error;
-        std::atomic_size_t buffered;
+        mutable std::mutex sync;
+        std::vector<uint8_t> data;
+        std::size_t buffered;
         std::thread thread;
+        std::string error;
     };
 }

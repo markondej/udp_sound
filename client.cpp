@@ -38,7 +38,7 @@ int main(int argc, char** argv)
                 if (!output.IsEnabled()) {
                     std::cout << "Stream params: " << samplingRate << " Hz, " << static_cast<uint32_t>(channels) << " channel(s), " << static_cast<uint32_t>(bitsPerChannel) << " bits" << std::endl;
                     output.Enable(device, samplingRate, channels, bitsPerChannel);
-                    rate = samplingRate;
+                    rate.store(samplingRate);
                 }
                 output.SetData(data, size);
 
