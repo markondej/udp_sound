@@ -66,7 +66,7 @@ int main(int argc, char** argv)
         result = EXIT_FAILURE;
     }
 
-    if (client != nullptr) {
+    if (client) {
         auto temp = client;
         client = nullptr;
         delete temp;
