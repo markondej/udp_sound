@@ -399,11 +399,11 @@ namespace udpstream {
                 instance->error = catched.what();
             }
 
-            /* if (handle != nullptr) {
+            /* if (handle) {
                 snd_pcm_drain(handle);
                 snd_pcm_close(handle);
             } */
-            if (buffer != nullptr) {
+            if (buffer) {
                 delete[] buffer;
             }
         }
@@ -579,11 +579,11 @@ namespace udpstream {
             instance->error = catched.what();
         }
 
-        /* if (handle != nullptr) {
+        /* if (handle) {
             snd_pcm_drain(handle);
             snd_pcm_close(handle);
         } */
-        if (buffer != nullptr) {
+        if (buffer) {
             delete[] buffer;
         }
     }
@@ -758,19 +758,19 @@ namespace udpstream {
         InputDevice inputDevice;
 
         auto handleData = [&](uint8_t *data, std::size_t size) {
-            if (dataHandler != nullptr) {
+            if (dataHandler) {
                 dataHandler(samplingRate, channels, bitsPerChannel, data, size);
             }
         };
 
         auto handleException = [&](const std::exception &exception) {
-            if (exceptionHandler != nullptr) {
+            if (exceptionHandler) {
                 exceptionHandler(exception);
             }
         };
 
         auto printText = [&](const std::string &text) {
-            if (logHandler != nullptr) {
+            if (logHandler) {
                 logHandler(text);
             }
         };
@@ -808,7 +808,7 @@ namespace udpstream {
         };
 
         auto handleTimeout = [&]() {
-            if ((registered != nullptr) && (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - registered->timestamp).count() > UDP_STREAM_REGISTER_TIMEOUT)) {
+            if (registered && (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - registered->timestamp).count() > UDP_STREAM_REGISTER_TIMEOUT)) {
                 printText("Client " + static_cast<std::string>(registered->address) + ":" + std::to_string(registered->address.GetPort()) + " unregistered");
                 delete registered;
                 registered = nullptr;
@@ -861,7 +861,7 @@ namespace udpstream {
             handleException(exception);
         }
 
-        if (registered != nullptr) {
+        if (registered) {
             delete registered;
         }
     }
@@ -935,7 +935,7 @@ namespace udpstream {
                 std::vector<uint8_t> received = client.Receive();
                 if (received.size() > sizeof(PacketHeader)) {
                     PacketHeader *header = reinterpret_cast<PacketHeader *>(received.data());
-                    if ((!last || (last < header->identifier)) && (dataHandler != nullptr)) {
+                    if ((!last || (last < header->identifier)) && dataHandler) {
                         dataHandler(header->samplingRate, header->channels, header->bitsPerChannel, &received[sizeof(PacketHeader)], received.size() - sizeof(PacketHeader));
                     }
                     last = header->identifier;
@@ -944,7 +944,7 @@ namespace udpstream {
                 }
             }
         } catch (std::exception &exception) {
-            if (exceptionHandler != nullptr) {
+            if (exceptionHandler) {
                 exceptionHandler(exception);
             }
         }
