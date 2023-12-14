@@ -57,7 +57,7 @@ int main(int argc, char** argv)
         result = EXIT_FAILURE;
     }
 
-    if (service != nullptr) {
+    if (service) {
         auto temp = service;
         service = nullptr;
         delete temp;
