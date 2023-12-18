@@ -10,7 +10,7 @@ udpstream::Client *client = nullptr;
 
 void signalHandler(int sigNum)
 {
-    if ((client != nullptr) && client->IsEnabled()) {
+    if (client && client->IsEnabled()) {
         client->Disable();
     }
 }
@@ -66,7 +66,7 @@ int main(int argc, char** argv)
         result = EXIT_FAILURE;
     }
 
-    if (client != nullptr) {
+    if (client) {
         auto temp = client;
         client = nullptr;
         delete temp;

@@ -9,7 +9,7 @@ udpstream::Service *service = nullptr;
 
 void signalHandler(int sigNum)
 {
-    if ((service != nullptr) && service->IsEnabled()) {
+    if (service && service->IsEnabled()) {
         service->Disable();
     }
 }
@@ -57,7 +57,7 @@ int main(int argc, char** argv)
         result = EXIT_FAILURE;
     }
 
-    if (service != nullptr) {
+    if (service) {
         auto temp = service;
         service = nullptr;
         delete temp;
