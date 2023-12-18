@@ -53,8 +53,7 @@ namespace udpstream {
         );
         bool Disable();
     private:
-        static void ServiceThread(
-            Service *instance,
+        void Thread(
             const std::string &address,
             uint16_t port,
             const std::string &device,
@@ -84,8 +83,7 @@ namespace udpstream {
         void Enable(const std::string &address, uint16_t port, const std::string &device = UDP_STREAM_DEFAULT_OUTPUT_DEVICE);
         bool Disable();
     private:
-        static void ClientThread(
-            Client *instance,
+        void Thread(
             const std::string &address,
             uint16_t port,
             const std::string &device,
@@ -110,7 +108,7 @@ namespace udpstream {
         void SetData(const uint8_t *data, std::size_t size);
         std::size_t GetBufferedSamples() const;
     private:
-        static void DeviceThread(OutputDevice *instance, const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
+        void Thread(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
         mutable std::mutex sync;
         std::vector<uint8_t> data;
         std::size_t buffered;
