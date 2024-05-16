@@ -538,7 +538,7 @@ namespace udpstream {
                 }
                 buffered = offset / ((bitsPerChannel >> 3) * channels);
                 lock.unlock();
-                bool wait = !ready || !loaded;
+                bool wait = !ready;
                 if (!wait) {
                     error = snd_pcm_avail(handle);
                     if (error == -EPIPE) {
@@ -551,6 +551,9 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Cannot verify available frames (" + std::string(snd_strerror(error)) + ")");
                     } else if (static_cast<unsigned long>(error) < frames) {
+                        wait = true;
+                    } else if (!loaded) {
+                        ready = false;
                         wait = true;
                     }
                 }
