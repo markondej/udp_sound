@@ -1,5 +1,6 @@
 #include "udp_stream.hpp"
 #include <regex>
+#include <cstring>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -273,10 +274,14 @@ namespace udpstream {
         }
         InputDevice &operator=(const InputDevice &) = delete;
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
+            std::lock_guard<std::mutex> lock(mutex);
+
             if (!Switchable::Enable()) {
                 return;
             }
+
             data.clear();
+
             try {
                 thread = std::thread(&InputDevice::Thread, this, device, samplingRate, channels, bitsPerChannel);
             } catch (...) {
@@ -285,8 +290,8 @@ namespace udpstream {
             }
         }
         bool Disable() {
-            static std::mutex access;
-            std::lock_guard<std::mutex> lock(access);
+            std::lock_guard<std::mutex> lock(mutex);
+
             if (Switchable::Disable()) {
                 thread.join();
                 return true;
@@ -407,7 +412,7 @@ namespace udpstream {
                 delete[] buffer;
             }
         }
-        mutable std::mutex sync;
+        mutable std::mutex sync, mutex;
         std::vector<uint8_t> data;
         std::thread thread;
         std::string error;
@@ -421,10 +426,14 @@ namespace udpstream {
     }
 
     void OutputDevice::Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
+        std::lock_guard<std::mutex> lock(mutex);
+
         if (!Switchable::Enable()) {
             return;
         }
+
         data.clear();
+
         try {
             thread = std::thread(&OutputDevice::Thread, this, device, samplingRate, channels, bitsPerChannel);\
         } catch (...) {
@@ -434,8 +443,8 @@ namespace udpstream {
     }
 
     bool OutputDevice::Disable() {
-        static std::mutex access;
-        std::lock_guard<std::mutex> lock(access);
+        std::lock_guard<std::mutex> lock(mutex);
+
         if (Switchable::Disable()) {
             thread.join();
             return true;
@@ -722,9 +731,12 @@ namespace udpstream {
         uint8_t bitsPerChannel
     )
     {
+        std::lock_guard<std::mutex> lock(mutex);
+
         if (!Switchable::Enable()) {
             throw std::runtime_error("Cannot enable service (already enabled)");
         }
+
         try {
             thread = std::thread(&Service::Thread, this, address, port, device, samplingRate, channels, bitsPerChannel, dataHandler, exceptionHandler, logHandler);
         } catch (...) {
@@ -735,8 +747,8 @@ namespace udpstream {
 
     bool Service::Disable()
     {
-        static std::mutex access;
-        std::lock_guard<std::mutex> lock(access);
+        std::lock_guard<std::mutex> lock(mutex);
+
         if (Switchable::Disable()) {
             thread.join();
             return true;
@@ -880,9 +892,12 @@ namespace udpstream {
 
     void Client::Enable(const std::string &address, uint16_t port, const std::string &device)
     {
+        std::lock_guard<std::mutex> lock(mutex);
+
         if (!Switchable::Enable()) {
             throw std::runtime_error("Cannot enable client (already enabled)");
         }
+
         try {
             thread = std::thread(&Client::Thread, this, address, port, device, dataHandler, exceptionHandler);
         } catch (...) {
@@ -893,8 +908,8 @@ namespace udpstream {
 
     bool Client::Disable()
     {
-        static std::mutex access;
-        std::lock_guard<std::mutex> lock(access);
+        std::lock_guard<std::mutex> lock(mutex);
+
         if (Switchable::Disable()) {
             thread.join();
             return true;
