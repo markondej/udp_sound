@@ -292,7 +292,7 @@ namespace udpstream {
         bool Disable() {
             std::lock_guard<std::mutex> lock(mutex);
 
-            if (Switchable::Disable()) {
+            if (thread.joinable() && Switchable::Disable()) {
                 thread.join();
                 return true;
             }
@@ -445,7 +445,7 @@ namespace udpstream {
     bool OutputDevice::Disable() {
         std::lock_guard<std::mutex> lock(mutex);
 
-        if (Switchable::Disable()) {
+        if (thread.joinable() && Switchable::Disable()) {
             thread.join();
             return true;
         }
@@ -749,7 +749,7 @@ namespace udpstream {
     {
         std::lock_guard<std::mutex> lock(mutex);
 
-        if (Switchable::Disable()) {
+        if (thread.joinable() && Switchable::Disable()) {
             thread.join();
             return true;
         }
@@ -910,7 +910,7 @@ namespace udpstream {
     {
         std::lock_guard<std::mutex> lock(mutex);
 
-        if (Switchable::Disable()) {
+        if (thread.joinable() && Switchable::Disable()) {
             thread.join();
             return true;
         }
