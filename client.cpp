@@ -2,6 +2,7 @@
 #include <csignal>
 #include <iostream>
 #include <cstring>
+#include <atomic>
 
 #define STREAM_CLIENT_NOP_DELAY 500
 #define BUFFERED_PLAYBACK_PRINT_INTERVAL 1000
@@ -41,16 +42,16 @@ int main(int argc, char** argv)
                     rate.store(samplingRate);
                 }
                 output.SetData(data, size);
-
         }, [&](const std::exception &exception) {
-                std::cout << exception.what() << std::endl;
+                std::cerr << exception.what() << std::endl;
             });
         client->Enable(address, port);
         auto last = std::chrono::system_clock::now();
         while (client->IsEnabled()) {
             std::string error = output.GetError();
             if (!error.empty()) {
-                throw std::runtime_error(error.c_str());
+                std::cerr << error <<std::endl;
+                throw std::exception();
             } else {
                 auto now = std::chrono::system_clock::now();
                 auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();

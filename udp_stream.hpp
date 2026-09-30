@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 #include <thread>
-#include <atomic>
 #include <mutex>
 
 #define UDP_STREAM_DEFAULT_INPUT_DEVICE "default"
@@ -20,12 +19,13 @@
 namespace udpstream {
     class Switchable {
     public:
+        using DisableHandler = std::function<void()>;
         Switchable();
+        virtual bool Disable(const DisableHandler &disableHandler = nullptr);
         bool IsEnabled() const;
-        virtual bool Disable();
     protected:
-        bool Enable();
-        std::atomic_bool enabled;
+        mutable std::mutex mutex;
+        bool enabled;
     };
 
     using ExceptionHandler = std::function<void(const std::exception &exception)>;
@@ -68,7 +68,6 @@ namespace udpstream {
         ExceptionHandler exceptionHandler;
         LogHandler logHandler;
         std::thread thread;
-        mutable std::mutex mutex;
     };
 
     class Client : public Switchable {
@@ -94,7 +93,6 @@ namespace udpstream {
         DataHandler dataHandler;
         ExceptionHandler exceptionHandler;
         std::thread thread;
-        mutable std::mutex mutex;
     };
 
     class OutputDevice : public Switchable {
@@ -111,7 +109,6 @@ namespace udpstream {
         std::size_t GetBufferedSamples() const;
     private:
         void Thread(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel);
-        mutable std::mutex sync, mutex;
         std::vector<uint8_t> data;
         std::size_t buffered;
         std::thread thread;

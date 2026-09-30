@@ -38,7 +38,7 @@ int main(int argc, char** argv)
             [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) {
                 return;
             }, [&](const std::exception &exception) {
-                std::cout << exception.what() << std::endl;
+                std::cerr << exception.what() << std::endl;
             }, [&](const std::string &text) {
                 std::cout << text << std::endl;
             });

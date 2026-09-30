@@ -251,17 +251,20 @@ namespace udpstream {
 
     bool Switchable::IsEnabled() const
     {
-        return enabled.load();
+        std::lock_guard<std::mutex> lock(mutex);
+        return enabled;
     }
 
-    bool Switchable::Disable()
+    bool Switchable::Disable(const Switchable::DisableHandler &disableHandler)
     {
-        return enabled.exchange(false);
-    }
-
-    bool Switchable::Enable()
-    {
-        return !enabled.exchange(true);
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!enabled)
+            return false;
+        if (disableHandler) {
+            disableHandler();
+        }
+        enabled = false;
+        return true;
     }
 
     class InputDevice : public Switchable {
@@ -276,34 +279,34 @@ namespace udpstream {
         void Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
             std::lock_guard<std::mutex> lock(mutex);
 
-            if (!Switchable::Enable()) {
+            if (enabled) {
                 return;
             }
 
+            enabled = true;
             data.clear();
 
             try {
                 thread = std::thread(&InputDevice::Thread, this, device, samplingRate, channels, bitsPerChannel);
             } catch (...) {
-                Switchable::Disable();
+                enabled = false;
                 throw;
             }
         }
         bool Disable() {
-            std::lock_guard<std::mutex> lock(mutex);
-
-            if (thread.joinable() && Switchable::Disable()) {
-                thread.join();
+            std::thread disabled;
+            if (Switchable::Disable([&]() { disabled = std::move(thread); }) && disabled.joinable()) {
+                disabled.join();
                 return true;
             }
             return false;
         }
         std::string GetError() const {
-            std::lock_guard<std::mutex> lock(sync);
+            std::lock_guard<std::mutex> lock(mutex);
             return error;
         }
         std::vector<uint8_t> GetData() {
-            std::lock_guard<std::mutex> lock(sync);
+            std::lock_guard<std::mutex> lock(mutex);
             return std::move(data);
         }
     private:
@@ -394,13 +397,13 @@ namespace udpstream {
                     } else if (error < 0) {
                         throw std::runtime_error("Error while reading from device (" + std::string(snd_strerror(error)) + ")");
                     }
-                    std::lock_guard<std::mutex> lock(sync);
+                    std::lock_guard<std::mutex> lock(mutex);
                     std::size_t offset = data.size(), bytes = error * (bitsPerChannel >> 3) * channels;
                     data.resize(offset + bytes);
                     std::memcpy(&data[offset], buffer, bytes);
                 }
             } catch (std::exception &catched) {
-                std::lock_guard<std::mutex> lock(sync);
+                std::lock_guard<std::mutex> lock(mutex);
                 error = catched.what();
             }
 
@@ -412,7 +415,6 @@ namespace udpstream {
                 delete[] buffer;
             }
         }
-        mutable std::mutex sync, mutex;
         std::vector<uint8_t> data;
         std::thread thread;
         std::string error;
@@ -428,44 +430,44 @@ namespace udpstream {
     void OutputDevice::Enable(const std::string &device, uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel) {
         std::lock_guard<std::mutex> lock(mutex);
 
-        if (!Switchable::Enable()) {
+        if (enabled) {
             return;
         }
 
+        enabled = true;
         data.clear();
 
         try {
-            thread = std::thread(&OutputDevice::Thread, this, device, samplingRate, channels, bitsPerChannel);\
+            thread = std::thread(&OutputDevice::Thread, this, device, samplingRate, channels, bitsPerChannel);
         } catch (...) {
-            Switchable::Disable();
+            enabled = false;
             throw;
         }
     }
 
     bool OutputDevice::Disable() {
-        std::lock_guard<std::mutex> lock(mutex);
-
-        if (thread.joinable() && Switchable::Disable()) {
-            thread.join();
+        std::thread disabled;
+            if (Switchable::Disable([&]() { disabled = std::move(thread); }) && disabled.joinable()) {
+            disabled.join();
             return true;
         }
         return false;
     }
 
     std::string OutputDevice::GetError() const {
-        std::lock_guard<std::mutex> lock(sync);
+        std::lock_guard<std::mutex> lock(mutex);
         return error;
     }
 
     void OutputDevice::SetData(const uint8_t *data, std::size_t size) {
-        std::lock_guard<std::mutex> lock(sync);
+        std::lock_guard<std::mutex> lock(mutex);
         std::size_t offset = this->data.size();
         this->data.resize(offset + size);
         std::memcpy(&this->data[offset], data, size);
     }
 
     std::size_t OutputDevice::GetBufferedSamples() const {
-        std::lock_guard<std::mutex> lock(sync);
+        std::lock_guard<std::mutex> lock(mutex);
         return buffered;
     }
 
@@ -531,7 +533,7 @@ namespace udpstream {
 
             bool loaded = false, ready = false;
             while (IsEnabled()) {
-                std::unique_lock<std::mutex> lock(sync);
+                std::unique_lock<std::mutex> lock(mutex);
                 std::size_t offset = data.size();
                 if (!loaded && (offset >= size)) {
                     std::memcpy(buffer, &data[0], size);
@@ -587,7 +589,7 @@ namespace udpstream {
                 loaded = false;
             }
         } catch (std::exception &catched) {
-            std::lock_guard<std::mutex> lock(sync);
+            std::lock_guard<std::mutex> lock(mutex);
             error = catched.what();
         }
 
@@ -733,24 +735,25 @@ namespace udpstream {
     {
         std::lock_guard<std::mutex> lock(mutex);
 
-        if (!Switchable::Enable()) {
+        if (enabled) {
             throw std::runtime_error("Cannot enable service (already enabled)");
         }
+
+        enabled = true;
 
         try {
             thread = std::thread(&Service::Thread, this, address, port, device, samplingRate, channels, bitsPerChannel, dataHandler, exceptionHandler, logHandler);
         } catch (...) {
-            Switchable::Disable();
+            enabled = false;
             throw;
         }
     }
 
     bool Service::Disable()
     {
-        std::lock_guard<std::mutex> lock(mutex);
-
-        if (thread.joinable() && Switchable::Disable()) {
-            thread.join();
+        std::thread disabled;
+        if (Switchable::Disable([&]() { disabled = std::move(thread); }) && disabled.joinable()) {
+            disabled.join();
             return true;
         }
         return false;
@@ -894,24 +897,25 @@ namespace udpstream {
     {
         std::lock_guard<std::mutex> lock(mutex);
 
-        if (!Switchable::Enable()) {
+        if (enabled) {
             throw std::runtime_error("Cannot enable client (already enabled)");
         }
+
+        enabled = true;
 
         try {
             thread = std::thread(&Client::Thread, this, address, port, device, dataHandler, exceptionHandler);
         } catch (...) {
-            Switchable::Disable();
+            enabled = false;
             throw;
         }
     }
 
     bool Client::Disable()
     {
-        std::lock_guard<std::mutex> lock(mutex);
-
-        if (thread.joinable() && Switchable::Disable()) {
-            thread.join();
+        std::thread disabled;
+        if (Switchable::Disable([&]() { disabled = std::move(thread); }) && disabled.joinable()) {
+            disabled.join();
             return true;
         }
         return false;
