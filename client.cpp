@@ -7,13 +7,11 @@
 #define STREAM_CLIENT_NOP_DELAY 500
 #define BUFFERED_PLAYBACK_PRINT_INTERVAL 1000
 
-udpstream::Client *client = nullptr;
+std::atomic<bool> stop(false);
 
 void signalHandler(int sigNum)
 {
-    if (client && client->IsEnabled()) {
-        client->Disable();
-    }
+    stop.store(true);
 }
 
 int main(int argc, char** argv)
@@ -30,11 +28,10 @@ int main(int argc, char** argv)
 
     int result = EXIT_SUCCESS;
 
-    udpstream::OutputDevice output;
-    std::atomic<uint32_t> rate(0);
-
     try {
-        client = new udpstream::Client(
+        std::atomic<uint32_t> rate(0);
+        udpstream::OutputDevice output;
+        udpstream::Client client(
             [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) {
                 if (!output.IsEnabled()) {
                     std::cout << "Stream params: " << samplingRate << " Hz, " << static_cast<uint32_t>(channels) << " channel(s), " << static_cast<uint32_t>(bitsPerChannel) << " bits" << std::endl;
@@ -45,9 +42,9 @@ int main(int argc, char** argv)
         }, [&](const std::exception &exception) {
                 std::cerr << exception.what() << std::endl;
             });
-        client->Enable(address, port);
+        client.Enable(address, port);
         auto last = std::chrono::system_clock::now();
-        while (client->IsEnabled()) {
+        while (!stop.load() && client.IsEnabled()) {
             std::string error = output.GetError();
             if (!error.empty()) {
                 std::cerr << error <<std::endl;
@@ -65,12 +62,6 @@ int main(int argc, char** argv)
         std::cout << std::endl;
     } catch (...) {
         result = EXIT_FAILURE;
-    }
-
-    if (client) {
-        auto temp = client;
-        client = nullptr;
-        delete temp;
     }
 
     return result;

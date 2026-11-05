@@ -2,16 +2,15 @@
 #include <iostream>
 #include <csignal>
 #include <cstring>
+#include <atomic>
 
 #define STREAM_SERVICE_NOP_DELAY 500
 
-udpstream::Service *service = nullptr;
+std::atomic<bool> stop(false);
 
 void signalHandler(int sigNum)
 {
-    if (service && service->IsEnabled()) {
-        service->Disable();
-    }
+    stop.store(true);
 }
 
 int main(int argc, char** argv)
@@ -34,7 +33,7 @@ int main(int argc, char** argv)
     int result = EXIT_SUCCESS;
 
     try {
-        service = new udpstream::Service(
+        udpstream::Service service(
             [&](uint32_t samplingRate, uint8_t channels, uint8_t bitsPerChannel, uint8_t *data, std::size_t size) {
                 return;
             }, [&](const std::exception &exception) {
@@ -42,7 +41,7 @@ int main(int argc, char** argv)
             }, [&](const std::string &text) {
                 std::cout << text << std::endl;
             });
-        service->Enable(
+        service.Enable(
             address,
             port,
             device,
@@ -50,17 +49,11 @@ int main(int argc, char** argv)
             channels,
             bitsPerChannel
         );
-        while (service->IsEnabled()) {
+        while (!stop.load() && service.IsEnabled()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(STREAM_SERVICE_NOP_DELAY));
         }
     } catch (...) {
         result = EXIT_FAILURE;
-    }
-
-    if (service) {
-        auto temp = service;
-        service = nullptr;
-        delete temp;
     }
 
     return result;
